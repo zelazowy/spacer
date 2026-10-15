@@ -1,4 +1,4 @@
-"""Non-UI preparation for the Siril Gaia fly-through launcher."""
+"""Shared SPACER preparation and rendering for desktop and Siril launchers."""
 import argparse
 import base64
 import io
@@ -17,8 +17,8 @@ from flythrough import prepare, render_video
 from version import VERSION, created_stamp
 
 
-UNSOLVED_MESSAGE = ('This image has no valid plate solution. Run Siril_ASTAP_PlateSolve.py '
-                    'or plate-solve it in Siril, then reopen Gaia Fly-through with the solved image.')
+UNSOLVED_MESSAGE = ('This image has no valid plate solution. Plate-solve it with your preferred solver '
+                    '(for example Siril_ASTAP_PlateSolve.py), then reopen the solved image.')
 
 
 def normalized_pixels(pixels):

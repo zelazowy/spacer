@@ -4,7 +4,37 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.5.1**. The Siril integration is available now; a standalone GUI and a unified CLI are planned.
+Current version: **0.6.0**. Run SPACER as a standalone desktop app or from Siril.
+
+## Standalone desktop app
+
+Siril is optional. Install Python 3.10+ and the dependencies in an isolated environment:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python SPACER.py
+```
+
+On Windows, activate with `.venv\Scripts\activate` instead. FFmpeg and a supported star-removal engine must be installed separately. SPACER discovers them automatically; change their paths in Advanced settings.
+
+Click **Open image…** to select an already-stretched, plate-solved FITS file. TIFF/PNG input prompts for a solved FITS with exactly the same pixel dimensions and framing; WCS/date come from that FITS. Matching dimensions cannot prove matching framing: do not use a cropped, rotated or differently registered reference. Standard bottom-up FITS and explicit `ROWORDER=TOP-DOWN` are supported; ordinary TIFF/PNG rasters are converted to the internal bottom-up orientation. Monochrome and RGB images are supported; alpha and multipage/sequence inputs are rejected. Some compressed TIFFs need an optional codec; export uncompressed TIFF if prompted.
+
+File pixels must already be stretched and normalized (floating pixels in [0,1]; integer images use their datatype range). The standalone app does not run a plate solver or Siril's autostretch. Use your preferred image editor/solver first. **Open project…** reopens any prepared project from either launcher, without opening the source image or Siril. Source files stay unchanged.
+
+You can select input when launching:
+
+```sh
+python SPACER.py /path/to/solved.fits
+python SPACER.py /path/to/finished.tif --wcs /path/to/matching_solved.fits
+python SPACER.py --project /path/to/flythrough/M45
+python SPACER.py --version
+```
+
+This is a Python desktop application, not a bundled installer. The original prototype CLI remains separate.
+
+## Siril integration
 
 Launch `Siril_Gaia_Flythrough.py` from Siril with a single plate-solved FITS or TIFF image open. If the image is not solved, the script stops before creating outputs and recommends `Siril_ASTAP_PlateSolve.py` or Siril’s plate solver. Download or clone this repository, then add its folder to Siril’s Python script search paths. Refresh the script listing or restart Siril. Alternatively, enter this in Siril's console:
 
@@ -12,7 +42,7 @@ Launch `Siril_Gaia_Flythrough.py` from Siril with a single plate-solved FITS or 
 pyscript "/path/to/spacer/Siril_Gaia_Flythrough.py"
 ```
 
-Keep the launcher beside the `gaia_flythrough` folder. The required helper files are `flythrough.py`, `siril_pipeline.py`, `iterative_deblend.py`, `version.py` and `viewer.html`; previous render folders are not needed to run the script.
+Keep the launcher beside the `gaia_flythrough` folder. Keep the entire `gaia_flythrough` folder, including the shared `app.py` and `image_source.py`; previous render folders are not needed to run the script.
 
 ## Workflow
 
@@ -28,7 +58,7 @@ The current Siril image is left unchanged. Existing plate solutions are reused; 
 
 The main window contains the current project, duration and **Final zoom**, expressed directly as a scale such as **1.3×** or **2×**. **Prepare and render** prepares a new image; **Resume and render** finishes partial preparation; **Render flight** reuses a completed project. **Open preview** and **Open video** become available when an export exists.
 
-Use **Open project…** to return to saved work. **New from Siril…** chooses a fresh project folder for the current image and opens its setup. The main project summary states whether SPACER uses current pixels or a saved image.
+Use **Open project…** to return to saved work. In standalone mode, **Open image…** selects a disk image. In Siril, **New from Siril…** chooses a fresh project folder for the current image and opens its setup. The main project summary states whether SPACER uses current pixels or a saved image.
 
 **Advanced settings…** opens a scrollable dialog with image stretch, removal engine and executable, observation date, FFmpeg and project location. Tools are discovered automatically; the date comes from the image. Missing setup opens this dialog. For a linear image, choose linked autostretch before preparation. Saved projects disable preparation options because they reuse their saved image and tools.
 
@@ -36,7 +66,7 @@ Progress and cancellation stay in the main window. **Details** reveals the proce
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.5.1_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.5.1_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.6.0_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.6.0_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -57,7 +87,7 @@ Siril's Python environment needs numpy, scipy, astropy, Pillow, tifffile and PyQ
 
 ## Accuracy and validation
 
-The animation uses the same photographed star sprites, Gaia DR3 positions, Bailer-Jones distances, distance screening, subpixel rendering and softened halos as the approved previews. Some stars remain in the flat background when they are unmatched, blended or have uncertain distances. The nebula is a flat photographic layer; its interior depth and radiometric travel effects are not reconstructed. See [the renderer documentation](gaia_flythrough/README.md) for the scientific scope and data credits.
+The animation uses the same photographed star sprites, Gaia DR3 positions, Bailer-Jones distances, distance screening, subpixel rendering and softened halos as the approved previews. Some stars remain in the flat background when they are unmatched, blended or have uncertain distances. The nebula is a flat photographic layer; its interior depth and radiometric travel effects are not reconstructed. See [the scientific scope in the development notes](DEVELOPMENT.md#scientific-scope) for the scientific scope and data credits.
 
 Checked: automated tests covering matching, original-image reconstruction, fractional motion, easing, both engine export paths, row orientation, source preservation, prepared-field reuse, unique filenames and safe clipping at deep zoom; the Qt window was rendered and inspected; both installed star-removal engines successfully processed a real image crop. The full workflow still needs a run from your live Siril image. The interface also has offscreen Qt tests and visual checks; native platform rendering can differ.
 
@@ -83,7 +113,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.5.1**. The Siril title shows the running version. New export filenames include it, for example `flythrough_v0.5.1_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.6.0**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.6.0_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 

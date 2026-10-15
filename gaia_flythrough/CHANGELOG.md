@@ -1,5 +1,14 @@
 # Gaia Flythrough releases
 
+## 0.6.0 — 2026-10-15
+
+- Add `SPACER.py`, a standalone desktop entry point with image/WCS/project startup arguments and version reporting; no Siril import or installation is needed.
+- Extract the shared Qt window/worker into `app.py`; retain the Siril launcher as a thin optional integration with unchanged pixel snapshot/autostretch support.
+- Add file loading for already-stretched solved FITS, or monochrome/RGB TIFF/PNG plus a matching solved FITS reference. Validate pixels, dimensions and celestial WCS; normalize row orientation without changing source files.
+- Open/resume projects from either launcher without the source image. Keep Iterative-only scenes, defaults, cache contracts, framing and non-overwriting exports.
+- Standalone input intentionally requires pre-stretched pixels; no plate solver or replacement for Siril autostretch is added. Document installation and external engine/FFmpeg requirements.
+- Minor feature release; extraction schemas and Iterative cache revision are unchanged.
+
 ## 0.5.1 — 2026-10-15
 
 - Replace “Final zoom increase” percentages and the explanatory hint with direct “Final zoom” scale (default 1.3×, range 1×–101×).

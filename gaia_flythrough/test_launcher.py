@@ -23,9 +23,9 @@ class LauncherTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app=QApplication.instance() or QApplication([])
-        spec=importlib.util.spec_from_file_location('spacer_launcher',Path(__file__).resolve().parents[1]/'Siril_Gaia_Flythrough.py')
+        spec=importlib.util.spec_from_file_location('spacer_launcher',Path(__file__).with_name('app.py'))
         cls.launcher=importlib.util.module_from_spec(spec)
-        with patch.dict(sys.modules,sirilpy=SimpleNamespace(ensure_installed=lambda *args:None)):
+        with patch.dict(sys.modules,sirilpy=None):
             spec.loader.exec_module(cls.launcher)
 
     def setUp(self):
@@ -119,3 +119,35 @@ class LauncherTests(unittest.TestCase):
         w.use_prepared(saved)
         self.assertAlmostEqual(w.zoom.value(),1.301)
         self.assertEqual(w.zoom_percent(),30.1)
+
+    def test_standalone_opens_image_and_project_without_siril(self):
+        import numpy as np
+        from astropy.io import fits
+        from astropy.wcs import WCS
+        wcs=WCS(naxis=2);wcs.wcs.ctype=['RA---TAN','DEC--TAN']
+        wcs.wcs.crval=[56,24];wcs.wcs.crpix=[8,6];wcs.wcs.cdelt=[-.01,.01]
+        path=self.folder/'disk.fits'
+        fits.PrimaryHDU(np.zeros((3,12,16),dtype=np.float32),wcs.to_header()).writeto(path)
+        with patch.dict(sys.modules,sirilpy=None):
+            w=self.launcher.FlythroughWindow()
+            try:
+                self.assertFalse(w.start.isEnabled())
+                self.assertEqual(w.new_project.text(),'Open image…')
+                w.use_image(path)
+                self.assertTrue(w.start.isEnabled())
+                self.assertEqual(w.stretch.count(),1)
+                w.executable.setText('/bin/sh');w.ffmpeg.setText('/bin/sh');w.epoch.setText('2026-10-15')
+                with patch.object(w,'launch') as launch:
+                    w.begin()
+                    launch.assert_called_once()
+                    self.assertEqual(launch.call_args.args[0].shape,(3,12,16))
+                    self.assertEqual(launch.call_args.args[2].source,str(path.resolve()))
+                project=self.folder/'prepared';project.mkdir()
+                (project/'scene_iterative.json').write_text('{}')
+                w.use_prepared(project)
+                with patch.object(w,'launch') as launch:
+                    w.begin()
+                    launch.assert_called_once()
+                    self.assertIsNone(launch.call_args.args[0])
+                    self.assertTrue(launch.call_args.args[2].reuse)
+            finally: w.close()

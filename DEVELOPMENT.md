@@ -1,22 +1,25 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.5.1 simplifies zoom; 0.5.0 simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.6.0 adds the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
-- Siril_Gaia_Flythrough.py: PyQt6 Siril launcher; snapshots current pixels and WCS without modifying the source. Requires an existing plate solution; suggests Siril/ASTAP when absent. Automatic solving was deliberately excluded.
+- SPACER.py: standalone desktop entry point; opens FITS, TIFF/PNG plus WCS, or an existing project.
+- gaia_flythrough/app.py: shared Qt interface and worker; no Siril import.
+- gaia_flythrough/image_source.py: disk input validation and channel/row normalization.
+- Siril_Gaia_Flythrough.py: thin Siril launcher; snapshots current pixels and WCS without modifying the source. Requires an existing plate solution; suggests Siril/ASTAP when absent. Automatic solving was deliberately excluded.
 - gaia_flythrough/siril_pipeline.py: export, external removal engines, cached fields and non-overwriting render variants.
 - gaia_flythrough/flythrough.py: catalogue matching, compact-star extraction, subpixel rendering and prototype CLI.
 - gaia_flythrough/iterative_deblend.py: alternating bright-star halo/spike and neighbouring-core fits.
 - gaia_flythrough/viewer.html: self-contained interactive preview.
 - gaia_flythrough/version.py: shared version and provenance.
 
-The prototype CLI takes separate photo, starless and WCS inputs. A unified single-file CLI, standalone GUI and website are future directions, not implemented features.
+The standalone GUI is implemented. File input uses already-stretched pixels and an existing plate solution; Siril linked autostretch remains exclusive to the Siril image source. The prototype rendering CLI still takes separate photo, starless and WCS inputs. A unified headless CLI, bundled installers and website remain future directions.
 
 ## Preserve these decisions
 
-The Siril workflow exposes only Iterative. Conservative core extraction remains an internal input; legacy Natural/Dynamic assets are preserved.
+Both desktop entry points expose only Iterative. Conservative core extraction remains an internal input; legacy Natural/Dynamic assets are preserved.
 Iterative repeatedly separates isolated bright groups, excluding catalogue neighbour cores from measured spike strips. Faint residual crosses can remain. Unresolved/overlapping groups and non-converged fits are deferred.
 
 Accuracy and visual quality matter more than analysis/rendering speed. Preserve subpixel motion and full-resolution deep-zoom sampling.
@@ -28,6 +31,8 @@ Defaults: 60 seconds, 1.3× final zoom, 24 fps, 80 pc travel, 1.5-second easing 
 Never overwrite exports. Names record version/mode/duration/zoom; collisions get numeric suffixes. Field preparation version/time and rendering version/time are separate. Historical unversioned analysis must remain labelled unversioned.
 
 Commit each completed change with its release version in the commit message. Keep each change independently referenceable; bump the shared version and changelog under the major.minor.patch rules.
+
+Standalone launches must not import `sirilpy` or require Siril. Keep image loading at the source boundary and share the same project/render pipeline between entry points. Treat TIFF/PNG WCS references as user-supplied framing assertions; validate dimensions, do not claim that dimensions verify registration.
 
 ## Interface conventions
 
