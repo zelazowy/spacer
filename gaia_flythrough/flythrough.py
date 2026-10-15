@@ -328,6 +328,12 @@ def sample_sprite(channels, x, y, zoom, viewport=None):
 
 
 def render_video(scene, background, args, path):
+    frames=getattr(args,'frame_indices',range(round(args.seconds*args.fps)))
+    if not hasattr(frames,'__len__'): frames=tuple(frames)
+    total=len(frames);done=0
+    frame_progress=getattr(args,'frame_progress',None)
+    started=time.monotonic();last_update=started
+    if frame_progress: frame_progress(0,total,0.)
     scale=min(1,args.video_width/scene['width'])
     w=round(scene['width']*scale);h=round(scene['height']*scale)
     video_stars=[dict(s,**{k:s[k]*scale for k in ('x','y','ax','ay','w','h')}) for s in scene['stars']]
@@ -342,7 +348,7 @@ def render_video(scene, background, args, path):
          '-r',str(args.fps),'-i','-','-an','-vf','pad=ceil(iw/2)*2:ceil(ih/2)*2','-c:v','libx264','-crf','18','-pix_fmt','yuv420p','-metadata',f'comment=SPACER v{VERSION}',str(path)]
     process=subprocess.Popen(cmd,stdin=subprocess.PIPE)
     try:
-        for frame in getattr(args,'frame_indices',range(round(args.seconds*args.fps))):
+        for frame in frames:
             if getattr(args,'cancel_event',None) is not None and args.cancel_event.is_set():
                 raise InterruptedError('Rendering cancelled; partial outputs retained.')
             ease_seconds=getattr(args,'ease_seconds',None)
@@ -366,10 +372,15 @@ def render_video(scene, background, args, path):
                 if xb>xa and yb>ya:
                     a[ya:yb,xa:xb]+=scaled[ya-iy:yb-iy,xa-ix:xb-ix]
             process.stdin.write(np.uint8(np.clip(a,0,1)*255).tobytes())
+            done+=1
+            now=time.monotonic()
+            if frame_progress and (done==1 or done==total or now-last_update>=.25):
+                frame_progress(done,total,now-started);last_update=now
             if frame%120==0:
                 print(f'Rendering {frame+1}/{round(args.seconds*args.fps)} frames',flush=True)
-                if getattr(args,'progress',None):
+                if getattr(args,'progress',None) and not frame_progress:
                     args.progress(f'Rendering frame {frame+1}/{round(args.seconds*args.fps)}')
+        if getattr(args,'progress',None): args.progress('Finalizing MP4…')
     finally:
         process.stdin.close()
         code=process.wait()

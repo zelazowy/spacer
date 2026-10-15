@@ -1,5 +1,13 @@
 # Gaia Flythrough releases
 
+## 0.9.1 — 2026-10-15
+
+- Replace the video-render activity indicator with a filling bar, completed/total frame counts, elapsed time and an estimated remaining time.
+- Report structured renderer progress through the worker, throttled to keep the interface responsive. Count sparse audit-frame exports by frames actually submitted.
+- Show Finalizing MP4 after all frames are submitted; retain successful 100% until another input/run. Failures and cancellation do not claim completion. Preparation without known totals keeps its activity indicator.
+- Add renderer-count/cancellation, pipeline-forwarding and Qt finalization/reset regression coverage. No image, matching, extraction or export-format changes.
+- Patch presentation update. Retain 0.9.0 as released; use patch versions for small usability refinements.
+
 ## 0.9.0 — 2026-10-15
 
 - Fill the matching date from FITS/Astro-TIFF observation headers, EXIF capture/digitized dates or a matching WCS reference. Fall back to image file-date metadata, filesystem creation time where supported, or modification time.

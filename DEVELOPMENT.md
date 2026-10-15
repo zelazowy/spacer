@@ -1,7 +1,7 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.9.0 infers matching dates with provenance; 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.9.1 improves render progress; 0.9.0 infers matching dates with provenance; 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Defaults: 60 seconds, 1.3× final zoom, 24 fps, 80 pc travel, 1.5-second easing 
 
 Never overwrite exports. Names record version/mode/duration/zoom; collisions get numeric suffixes. Field preparation version/time and rendering version/time are separate. Historical unversioned analysis must remain labelled unversioned.
 
-Commit each completed change with its release version in the commit message. Keep each change independently referenceable; bump the shared version and changelog under the major.minor.patch rules.
+Commit each completed change with its release version in the commit message. Keep each change independently referenceable; bump the shared version and changelog under the major.minor.patch rules. Use patch releases for small usability/presentation refinements; reserve minor releases for substantive capabilities or deliberate extraction/rendering behavior changes. Keep the already-released 0.9.0 version as requested.
 
 Astro-TIFF uses ImageDescription tag 270, short FITS cards and LF/CRLF endings. TIFF dimensions are authoritative; preserve WCS/SIP/date cards and use the TIFF Orientation tag for raster storage, not the embedded ROWORDER. Tested with local M45/M33/M13/zenith Astro-TIFF files.
 
@@ -55,7 +55,7 @@ Real validation: installed ASTAP/D20 solved a downsampled finished M13 JPEG with
 
 ## Interface conventions
 
-Keep project choice, duration, direct final zoom scale and one state-specific primary action in the main window. Advanced preparation/tool paths live in a scrollable dialog; diagnostics use a separate Details disclosure. Use native palette and widgets, meaningful text, keyboard focus and visible progress. Surface required setup when validation fails. Disable settings and project switching during worker execution. Test new, partial, prepared, busy and failed states after changing the interface.
+Keep project choice, duration, direct final zoom scale and one state-specific primary action in the main window. Advanced preparation/tool paths live in a scrollable dialog; diagnostics use a separate Details disclosure. Use native palette and widgets, meaningful text, keyboard focus and visible progress. Surface required setup when validation fails. Disable settings and project switching during worker execution. Test new, partial, prepared, busy and failed states after changing the interface. Render progress uses structured frame/total/elapsed callbacks, throttled to roughly four updates per second; never parse log text for counters. Keep the finalizing stage below 100% until FFmpeg and project recording succeed. ETA is an estimate based on completed frames; unknown-duration preparation uses an activity indicator. Reset counters for a new run/input and keep successful 100% visible until then.
 
 ## Scientific scope
 

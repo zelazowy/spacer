@@ -274,3 +274,25 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue(w.epoch.text());self.assertTrue(w.selected_date_info()['approximate'])
             self.assertIn('File ',w.date_origin.text())
         finally: w.close()
+
+    def test_render_progress_counts_wait_for_encoder_and_reset(self):
+        from types import SimpleNamespace
+        w=self.window
+        w.show_frame_progress(720,1440,30)
+        self.assertEqual(w.progress_bar.value(),500)
+        self.assertIn('720 / 1,440',w.render_counter.text())
+        self.assertIn('00:30 remaining',w.render_counter.text())
+        w.show_frame_progress(1440,1440,60)
+        self.assertEqual(w.progress_bar.value(),999)
+        self.assertEqual(w.status.text(),'Finalizing MP4…')
+        w.worker=SimpleNamespace(options=SimpleNamespace(result_stem='flight',solve=False),isRunning=lambda:False)
+        try:
+            w.prepared=self.folder.resolve();w.output.setText(str(w.prepared))
+            w.completed(str(self.folder))
+            self.assertEqual(w.progress_bar.value(),1000)
+            w.finished()
+            self.assertTrue(w.progress_bar.isVisible())
+            self.assertTrue(w.render_counter.isVisible())
+            w.output.setText(str(self.folder/'another'));w.refresh_project()
+            self.assertFalse(w.progress_bar.isVisible());self.assertFalse(w.render_counter.isVisible())
+        finally: w.worker=None

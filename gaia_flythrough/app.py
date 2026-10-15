@@ -1,5 +1,6 @@
 """Shared SPACER desktop interface; Siril is an optional image source."""
 import sys
+import math
 from pathlib import Path
 from types import SimpleNamespace
 import threading
@@ -27,12 +28,14 @@ class ZoomSpinBox(QDoubleSpinBox):
 
 class Worker(QThread):
     progress=pyqtSignal(str)
+    frame_progress=pyqtSignal(int,int,float)
     completed=pyqtSignal(str)
     failed=pyqtSignal(str)
     def __init__(self,pixels,header,options):
         super().__init__()
         self.pixels,self.header,self.options=pixels,header,options
         self.cancel=threading.Event()
+        self.options.frame_progress=self.frame_progress.emit
     def run(self):
         try:
             if getattr(self.options,'solve',False):
@@ -53,6 +56,7 @@ class FlythroughWindow(QWidget):
         self.siril=siril;self.file_source=None;self.worker=None;self.result=None;self.prepared=None;self.result_stem=None
         self.preferences=Preferences()
         self.auto_date_info=None
+        self.render_succeeded=False
         self.setWindowTitle(f'SPACER — v{VERSION}')
         self.resize(680,560)
         self.setMinimumWidth(600)
@@ -147,7 +151,8 @@ class FlythroughWindow(QWidget):
 
         self.status=QLabel('Ready to prepare this image.');self.status.setWordWrap(True);layout.addWidget(self.status)
         self.progress_bar=QProgressBar();self.progress_bar.setRange(0,0);self.progress_bar.setTextVisible(False)
-        self.progress_bar.setFixedHeight(4);self.progress_bar.hide();layout.addWidget(self.progress_bar)
+        self.progress_bar.setFixedHeight(18);self.progress_bar.hide();layout.addWidget(self.progress_bar)
+        self.render_counter=QLabel();self.render_counter.setWordWrap(True);self.render_counter.hide();layout.addWidget(self.render_counter)
         self.buttons=QHBoxLayout();layout.addLayout(self.buttons)
         self.preview=QPushButton('Open preview');self.preview.setEnabled(False)
         self.preview.clicked.connect(lambda: self.open_result('preview.html'));self.buttons.addWidget(self.preview)
@@ -314,6 +319,7 @@ class FlythroughWindow(QWidget):
         self.preparation.setEnabled(not saved or read_project(folder).get('stage')=='solved')
         self.start.setText(('Render flight' if ready else 'Resume and render') if saved else 'Prepare and render')
         if folder!=self.prepared:
+            self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()
             self.result=None;self.result_stem=None
             self.preview.setEnabled(False);self.video.setEnabled(False)
         self.status.setText('Ready to render from the saved project.' if saved else ('Ready to prepare this image.' if self.siril or self.file_source else 'Open an image or project to begin.'))
@@ -350,6 +356,23 @@ class FlythroughWindow(QWidget):
     def report_progress(self,message):
         self.log.appendPlainText(message)
         self.status.setText(message if len(message)<160 else message[:157]+'…')
+
+    def show_frame_progress(self,done,total,elapsed):
+        if total<=0: return
+        def clock(seconds):
+            seconds=max(0,int(seconds));minutes,seconds=divmod(seconds,60)
+            hours,minutes=divmod(minutes,60)
+            return f'{hours}:{minutes:02d}:{seconds:02d}' if hours else f'{minutes:02d}:{seconds:02d}'
+        self.progress_bar.setRange(0,1000)
+        # Frame submission can finish before FFmpeg flushes its output.
+        self.progress_bar.setValue(min(999,done*1000//total))
+        self.progress_bar.setTextVisible(True);self.progress_bar.show()
+        counter=f'Frames {done:,} / {total:,} · elapsed {clock(elapsed)}'
+        if done>0 and done<total and elapsed>=2:
+            counter+=f' · about {clock(math.ceil(elapsed*(total-done)/done))} remaining'
+        self.render_counter.setText(counter);self.render_counter.show()
+        if not self.worker or not self.worker.cancel.is_set():
+            self.status.setText('Finalizing MP4…' if done==total else 'Rendering video…')
 
     def show_problem(self,title,message):
         self.status.setText(message)
@@ -421,12 +444,15 @@ class FlythroughWindow(QWidget):
             self.result=None;self.preview.setEnabled(False);self.video.setEnabled(False)
             self.start.setEnabled(False);self.advanced_toggle.setEnabled(False);self.cancel_button.setEnabled(True);self.cancel_button.show()
             self.advanced_dialog.close();self.start.setText('Solving…' if getattr(options,'solve',False) else 'Processing…')
+            self.render_succeeded=False;self.render_counter.clear();self.render_counter.hide()
+            self.progress_bar.setRange(0,0);self.progress_bar.setTextVisible(False)
             self.progress_bar.show();self.status.setText('Starting…')
             self.load_scene.setEnabled(False)
             for control in self.settings: control.setEnabled(False)
             self.log.appendPlainText('Outputs: '+str(self.prepared))
             self.worker=Worker(pixels,header,options)
             self.worker.progress.connect(self.report_progress)
+            self.worker.frame_progress.connect(self.show_frame_progress)
             self.worker.completed.connect(self.completed);self.worker.failed.connect(self.failed)
             self.worker.finished.connect(self.finished);self.worker.start()
     def render_variant(self):
@@ -489,6 +515,8 @@ class FlythroughWindow(QWidget):
         self.result=folder if self.result_stem else None
         self.preview.setEnabled(bool(self.result and (folder/(self.result_stem+'.html')).exists()))
         self.video.setEnabled(bool(self.result and (folder/(self.result_stem+'.mp4')).exists()))
+        if folder!=self.prepared:
+            self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()
         self.prepared=folder;self.output.setText(str(folder));self.refresh_project()
         self.remember_project(folder)
         self.log.appendPlainText(f'Tool v{VERSION} · saved field {field_description(saved_scene)}\nReusing saved image and Gaia field: '+str(folder)+
@@ -502,6 +530,8 @@ class FlythroughWindow(QWidget):
             self.use_prepared(Path(path))
             self.report_progress('Sky position solved. The matching date is filled automatically; you can review it in Advanced settings.')
             return
+        self.render_succeeded=True
+        self.progress_bar.setRange(0,1000);self.progress_bar.setValue(1000);self.progress_bar.setTextVisible(True)
         self.result=Path(path);self.result_stem=self.worker.options.result_stem
         self.report_progress('Flight ready. Open the preview or video.');self.log.appendPlainText(str(self.result/(self.result_stem+'.mp4')))
         self.preview.setEnabled(True);self.video.setEnabled(True)
@@ -512,7 +542,9 @@ class FlythroughWindow(QWidget):
         QMessageBox.warning(self,'Flight not completed',message)
     def finished(self):
         self.start.setEnabled(True);self.advanced_toggle.setEnabled(True);self.cancel_button.setEnabled(False)
-        self.cancel_button.hide();self.progress_bar.hide()
+        self.cancel_button.hide()
+        if not self.render_succeeded:
+            self.progress_bar.hide();self.render_counter.hide()
         self.load_scene.setEnabled(True)
         for control in self.settings: control.setEnabled(True)
         if self.prepared and (self.prepared/'project.json').is_file(): self.remember_project(self.prepared)

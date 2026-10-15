@@ -257,7 +257,8 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     options.result_stem=stem
     scene=dict(scene,render_version=VERSION,render_created_at=created_stamp(),render_name=stem)
     args=argparse.Namespace(seconds=options.seconds,zoom=1+options.zoom/100,travel=80,
-        fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress,ffmpeg=options.ffmpeg)
+        fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress,ffmpeg=options.ffmpeg,
+        frame_progress=getattr(options,'frame_progress',None))
     progress(f'Reusing prepared field: {len(scene["stars"])} stars. Creating {stem}.mp4')
     template=Path(__file__).with_name('viewer.html').read_text()
     html=template.replace('EASERAMP',str(1.5/args.seconds)).replace('DURATION',str(args.seconds*1000)).replace('MAXTRAVEL','160').replace('TRAVEL','80').replace('MAXZOOM',str(max(11,args.zoom))).replace('ZOOM',str(args.zoom)).replace('SCENE',json.dumps(scene,allow_nan=False))
