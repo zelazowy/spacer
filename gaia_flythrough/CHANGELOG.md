@@ -1,5 +1,14 @@
 # Gaia Flythrough releases
 
+## 0.9.2 — 2026-10-15
+
+- Stream ASTAP stdout/stderr while it runs, including its progress messages; show Details automatically during solving.
+- Mirror worker stage messages to the launching terminal and timestamp terminal/in-app logs. Report source dimensions, search settings, database, exact command, exit status and elapsed time.
+- Add quiet-solver elapsed-time updates and retained per-attempt diagnostics in ignored `.spacer-logs/`, including failed/cancelled/timed-out attempts. Keep error dialogs concise with the diagnostic path.
+- Preserve partial lines and UTF-8 split across output chunks. Add live-before-exit, retained-log, Unicode and quiet-heartbeat regressions.
+- Inspect the supplied NGC2403 JPEG with installed ASTAP; no match in the initial guided trial despite ~500 detected stars. Source verified unchanged.
+- Patch diagnostics improvement; solver search defaults, image pixels and rendering are unchanged.
+
 ## 0.9.1 — 2026-10-15
 
 - Replace the video-render activity indicator with a filling bar, completed/total frame counts, elapsed time and an estimated remaining time.

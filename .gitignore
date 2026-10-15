@@ -14,3 +14,6 @@ outputs/
 # Local desktop navigation preferences
 .spacer-settings.json
 .spacer-settings.tmp
+
+# Retained local solver diagnostics
+.spacer-logs/

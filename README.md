@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.9.1**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.9.2**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -21,7 +21,7 @@ On Windows, activate with `.venv\Scripts\activate` instead. FFmpeg and a support
 
 Click **Open image…** to select a finished FITS, TIFF, PNG or JPEG. Existing FITS and Astro-TIFF plate solutions are read automatically, including SIP distortion terms and observation date when present. Astro-TIFF uses the FITS-style metadata described in the [format specification](https://siril.readthedocs.io/en/stable/file-formats/Astro-TIFF.html).
 
-If the image has no solution, click **Solve sky position**. SPACER uses your installed ASTAP and its star database. In **Advanced settings → Plate solving (ASTAP)**, choose the executable (or macOS `.app`) and optional database folder. Defaults are blind search, automatic field height and automatic downsampling. If a solve fails, add an approximate object name (such as `M13`) or RA/Dec (`16 41 38 +36 27 16`), and the image height on the sky in degrees. Object-name lookup needs internet; numeric coordinates and blind solving work offline. ASTAP’s automatic field-height search covers roughly 0.3–10°; supply a height outside that range. A blind search can take several minutes; solving times out after ten minutes and can be cancelled. See [ASTAP’s command-line documentation](https://www.hnsky.org/astap.htm#astap_command_line).
+If the image has no solution, click **Solve sky position**. SPACER uses your installed ASTAP and its star database. In **Advanced settings → Plate solving (ASTAP)**, choose the executable (or macOS `.app`) and optional database folder. Defaults are blind search, automatic field height and automatic downsampling. If a solve fails, add an approximate object name (such as `M13`) or RA/Dec (`16 41 38 +36 27 16`), and the image height on the sky in degrees. Object-name lookup needs internet; numeric coordinates and blind solving work offline. ASTAP’s automatic field-height search covers roughly 0.3–10°; supply a height outside that range. ASTAP messages stream live to the app’s Details console and the launching terminal, with timestamps, input dimensions, search settings, database location and the command used. Details opens when solving starts. If ASTAP is quiet, an elapsed-time message appears about every ten seconds. Every attempt retains a full log in `.spacer-logs/` beside the app (or a temporary-file fallback if that folder is not writable); the console reports its path. Logs survive failures, timeouts and cancellation. A blind search can take several minutes; solving times out after ten minutes and can be cancelled. See [ASTAP’s command-line documentation](https://www.hnsky.org/astap.htm#astap_command_line).
 
 A successful solve creates the project with the original colour pixels and its new WCS in `source_wcs.fits`, plus solver settings/provenance in `project.json` and `astap.log`. Original image files are never updated. Click **Resume and render** to prepare the star layers and render. The matching date is filled automatically from capture metadata or a labelled file-date estimate. Review or override it in Advanced settings when needed. Star-removal settings remain editable until preparation starts. Reopen this project to reuse its solution without ASTAP or the original source file.
 
@@ -85,7 +85,7 @@ Progress and cancellation stay in the main window. Video export shows a filling 
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.9.1_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.9.1_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.9.2_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.9.2_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -132,7 +132,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.9.1**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.9.1_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.9.2**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.9.2_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 

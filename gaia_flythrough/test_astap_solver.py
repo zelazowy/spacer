@@ -20,7 +20,7 @@ class SolverTests(unittest.TestCase):
         Image.fromarray(raster).save(self.image)
         self.original=self.image.read_bytes()
         self.options=SimpleNamespace(source=str(self.image),output=str(self.root/'project'),astap='/bin/sh',
-            database='',target='',fov=0,radius=180,binning=0,epoch='2026-10-15',seconds=60,zoom=30,
+            log_directory=self.root/'logs',database='',target='',fov=0,radius=180,binning=0,epoch='2026-10-15',seconds=60,zoom=30,
             engine='StarNet',executable='/fake/starnet',ffmpeg='ffmpeg')
         wcs=WCS(naxis=2);wcs.wcs.ctype=['RA---TAN','DEC--TAN']
         wcs.wcs.crval=[56,24];wcs.wcs.crpix=[8,6];wcs.wcs.cdelt=[-.01,.01]
@@ -98,3 +98,56 @@ class SolverTests(unittest.TestCase):
         header=fits.getheader(out/'source_wcs.fits')
         self.assertTrue(header['DATEAPPX'])
         self.assertEqual(header['DATE-OBS'],state['date_info']['value'])
+
+    def test_live_output_arrives_before_exit_and_log_survives_failure(self):
+        events=[];state={'finished':False}
+        def process(argv,**kwargs):
+            self.fake_process(argv,**kwargs)
+            writer=kwargs['stdout'];writer.write('Detecting stars\nPartial');writer.flush()
+            class Process:
+                returncode=0
+                polls=0
+                def poll(self):
+                    self.polls+=1
+                    if self.polls==1: return None
+                    if not state['finished']:
+                        writer.write(' line\n');writer.flush();state['finished']=True
+                    return 0
+            return Process()
+        with patch('astap_solver.subprocess.Popen',side_effect=process):
+            solve_project(self.options,lambda message:events.append((message,state['finished'])))
+        self.assertIn(('ASTAP | Detecting stars',False),events)
+        self.assertIn(('ASTAP | Partial line',True),events)
+        log=Path(self.options.diagnostic_log)
+        self.assertTrue(log.exists());self.assertIn('Detecting stars',log.read_text())
+        self.options.output=str(self.root/'failed-project')
+        with patch('astap_solver.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:1,returncode=1)):
+            with self.assertRaisesRegex(RuntimeError,'Diagnostic log:'): solve_project(self.options)
+        self.assertTrue(Path(self.options.diagnostic_log).exists())
+
+    def test_log_tail_preserves_split_utf8_and_carriage_return_updates(self):
+        import io
+        from astap_solver import SolverLogTail
+        encoded='Field 4.2°\rStars: 500\n'.encode('utf-8')
+        boundary=encoded.index('°'.encode('utf-8'))+1
+        reader=io.BytesIO(encoded[:boundary]);events=[]
+        tail=SolverLogTail(reader,events.append)
+        tail.drain()
+        cursor=reader.tell();reader.seek(0,2);reader.write(encoded[boundary:]);reader.seek(cursor)
+        tail.drain(final=True)
+        self.assertEqual(events,['ASTAP | Field 4.2°','ASTAP | Stars: 500'])
+
+    def test_quiet_solver_reports_elapsed_time_while_running(self):
+        def process(argv,**kwargs):
+            self.fake_process(argv,**kwargs)
+            class Process:
+                returncode=0
+                polls=0
+                def poll(self):
+                    self.polls+=1
+                    return None if self.polls==1 else 0
+            return Process()
+        events=[];clock=iter(range(0,1000,11))
+        with patch('astap_solver.subprocess.Popen',side_effect=process),patch('astap_solver.time.monotonic',side_effect=lambda:next(clock)):
+            solve_project(self.options,events.append)
+        self.assertTrue(any('ASTAP still working' in line for line in events))

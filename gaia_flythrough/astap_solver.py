@@ -1,6 +1,9 @@
 """Optional ASTAP solving of a same-size proxy; original pixels stay untouched."""
 import os
+import codecs
 import re
+import shlex
+import uuid
 from pathlib import Path
 import shutil
 import subprocess
@@ -33,6 +36,34 @@ def resolve_astap(value):
     return path.resolve()
 
 
+class SolverLogTail:
+    """Read appended solver output without blocking or losing partial lines."""
+    def __init__(self,reader,progress):
+        self.reader=reader;self.progress=progress;self.pending=''
+        self.decoder=codecs.getincrementaldecoder('utf-8')(errors='replace')
+
+    def drain(self,final=False):
+        data=self.reader.read()
+        if isinstance(data,bytes): text=self.decoder.decode(data,final=final)
+        else: text=data
+        lines=(self.pending+text).replace('\r','\n').split('\n')
+        self.pending=lines.pop()
+        if final and self.pending: lines.append(self.pending);self.pending=''
+        for line in lines:
+            if line.strip(): self.progress('ASTAP | '+line.rstrip())
+        return bool(data)
+
+
+def diagnostic_path(options):
+    directory=Path(getattr(options,'log_directory',Path(__file__).resolve().parents[1]/'.spacer-logs'))
+    try:
+        directory.mkdir(parents=True,exist_ok=True)
+        return directory/('astap_'+time.strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex[:8]+'.log')
+    except OSError:
+        with tempfile.NamedTemporaryFile(prefix='spacer_astap_',suffix='.log',delete=False) as file:
+            return Path(file.name)
+
+
 def solve_project(options,progress=lambda message:None,cancel=None):
     cancel=cancel or threading.Event()
     executable=resolve_astap(options.astap)
@@ -43,7 +74,9 @@ def solve_project(options,progress=lambda message:None,cancel=None):
     if not 0<=options.fov<=180 or not 0<options.radius<=180 or not 0<=options.binning<=8:
         raise ValueError('Invalid field height, search radius or downsampling.')
     source=FileImageSource(options.source,getattr(options,'wcs_path',None))
+    progress('Loading solver input: '+str(source.path))
     pixels,header=source.snapshot(allow_unsolved=True)
+    progress(f'Input: {pixels.shape[2]} × {pixels.shape[1]} pixels, {pixels.shape[0]} colour channels. Original file stays unchanged.')
     info=getattr(options,'date_info',None) or (date_info(options.epoch,'Manual date') if options.epoch else source.date_info())
     if options.epoch: header['DATE-OBS']=options.epoch
     stamp_date(header,info)
@@ -58,28 +91,44 @@ def solve_project(options,progress=lambda message:None,cancel=None):
     low=float(mono.min());high=float(mono.max())
     if high<=low: raise ValueError('This image is constant; no stars can be detected.')
     mono=(mono-low)*(65535./(high-low))
-    progress('Solving sky position with ASTAP…')
+    progress(f'ASTAP search: target {options.target or "blind/all sky"}; radius {options.radius:g}°; field height {format(options.fov,"g")+"°" if options.fov else "auto (about 0.3–10°)"}; downsampling {options.binning or "auto"}.')
+    progress('ASTAP database: '+(options.database or 'ASTAP default location'))
+    progress('Preparing the same-size monochrome solver copy…')
     with tempfile.TemporaryDirectory(prefix='spacer_astap_') as work:
         proxy=Path(work)/'proxy.fits'
         fits.PrimaryHDU(mono,header).writeto(proxy)
         argv=[str(executable),'-f',str(proxy),'-r',str(options.radius),'-z',str(options.binning),
-              '-fov',str(options.fov),'-ra',str(ra),'-spd',str(dec+90),'-sip','-wcs']
+              '-fov',str(options.fov),'-ra',str(ra),'-spd',str(dec+90),'-sip','-wcs','-progress']
         if options.database: argv+=['-d',str(Path(options.database).expanduser().resolve())]
-        log_path=Path(work)/'astap.log';started=time.monotonic()
+        log_path=diagnostic_path(options);options.diagnostic_log=str(log_path)
+        progress('Solver diagnostic log: '+str(log_path))
+        progress('ASTAP command: '+shlex.join(argv))
+        started=time.monotonic();last_output=started;last_heartbeat=started
+        progress('Solving sky position with ASTAP…')
         with log_path.open('w') as log:
-            process=subprocess.Popen(argv,stdout=log,stderr=subprocess.STDOUT,cwd=work)
-            try:
-                while process.poll() is None:
-                    if cancel.wait(.2): raise InterruptedError('Plate solving cancelled.')
-                    if time.monotonic()-started>getattr(options,'timeout',600):
-                        raise RuntimeError('ASTAP timed out. Retry with an approximate target and field height.')
-            finally:
-                if process.poll() is None:
-                    process.terminate()
-                    try: process.wait(timeout=5)
-                    except subprocess.TimeoutExpired: process.kill();process.wait()
+            log.write(f'SPACER v{VERSION}\nSource: {source.path}\nCommand: {shlex.join(argv)}\n\n');log.flush()
+            with log_path.open('rb') as reader:
+                reader.seek(log.tell())
+                tail=SolverLogTail(reader,progress)
+                process=subprocess.Popen(argv,stdout=log,stderr=subprocess.STDOUT,cwd=work)
+                try:
+                    while process.poll() is None:
+                        if tail.drain(): last_output=time.monotonic()
+                        if cancel.wait(.2): raise InterruptedError('Plate solving cancelled. Diagnostic log: '+str(log_path))
+                        now=time.monotonic()
+                        if now-last_heartbeat>=10 and now-last_output>=10:
+                            progress(f'ASTAP still working — {now-started:.0f} s elapsed, {now-last_output:.0f} s since last output. Cancel is available.')
+                            last_heartbeat=now
+                        if now-started>getattr(options,'timeout',600):
+                            raise RuntimeError('ASTAP timed out. Retry with an approximate target and field height. Diagnostic log: '+str(log_path))
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                        try: process.wait(timeout=5)
+                        except subprocess.TimeoutExpired: process.kill();process.wait()
+                    tail.drain(final=True)
         output=log_path.read_text(errors='replace')
-        for line in output.splitlines()[-20:]: progress(line)
+        progress(f'ASTAP exited with code {process.returncode} after {time.monotonic()-started:.1f} s.')
         if cancel.is_set(): raise InterruptedError('Plate solving cancelled.')
         ini=proxy.with_suffix('.ini')
         values={}
@@ -89,8 +138,9 @@ def solve_project(options,progress=lambda message:None,cancel=None):
                     key,value=line.split('=',1);values[key.strip()]=value.split('//')[0].strip()
         wcs_path=proxy.with_suffix('.wcs')
         if process.returncode!=0 or values.get('PLTSOLVD')!='T' or not wcs_path.exists():
-            error=values.get('ERROR',output[-1500:] or f'exit code {process.returncode}')
-            raise RuntimeError('ASTAP could not solve this image: '+error+'\nCheck its star database, or set a target and field height in Advanced settings.')
+            reasons={1:'No matching star pattern found.',2:'Not enough usable stars detected.',16:'Could not read the solver image.',32:'ASTAP star database not found.',33:'Could not read the ASTAP star database.'}
+            error=values.get('ERROR') or reasons.get(process.returncode,f'Exit code {process.returncode}.')
+            raise RuntimeError('ASTAP could not solve this image: '+error+'\nCheck its star database, or set a target and field height in Advanced settings.\nDiagnostic log: '+str(log_path))
         text=wcs_path.read_text(encoding='ascii').rstrip('\x00')
         solved=fits.Header.fromstring(text,sep='\n' if '\n' in text else '')
         for key,size in (('NAXIS1',pixels.shape[2]),('NAXIS2',pixels.shape[1])):

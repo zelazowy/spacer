@@ -1,7 +1,7 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.9.1 improves render progress; 0.9.0 infers matching dates with provenance; 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.9.2 streams solver diagnostics; 0.9.1 improves render progress; 0.9.0 infers matching dates with provenance; 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
@@ -44,6 +44,12 @@ Standalone launches must not import `sirilpy` or require Siril. Keep image loadi
 Standalone startup without explicit input restores the last selected image/project, including an external WCS reference when available. Explicit CLI inputs win; Siril keeps its current-image workflow. File dialogs start in the last successfully selected folder. Missing/corrupt preferences and missing last inputs must not block startup. Remember project folders after successful preparation or partial work so a restart resumes saved snapshots. Preferences are local to the checkout; avoid putting user paths in Git. A read-only preferences location must not break processing.
 
 Explain that observation date is for Gaia proper-motion matching, not an export timestamp or a check that rendering succeeds. Prefer capture metadata. Since 0.9.0, export/file metadata and filesystem creation/modification time can supply a clearly labelled approximate matching epoch when capture time is absent. Never use POSIX ctime as creation time. Manual year/month values are approximate. Carry date_info through solving, preparation, scene/render provenance and restarts, with DATEAPPX/DATESRC on internal FITS copies. Do not reinterpret existing prepared fields or change extraction/cache schemas.
+
+## Solver diagnostics
+
+Worker stage messages go to both timestamped terminal output and the in-app Details log. ASTAP stdout/stderr is captured in a retained per-attempt `.spacer-logs/` file and tailed incrementally while the process runs. Enable its `-progress` flag; preserve split UTF-8 characters and partial/CR-delimited lines. Poll without blocking cancellation; report elapsed time after ten seconds of quiet. Do not wait until exit or keep only the last lines. Keep errors concise and link the full log path. Persistent logs are outside project folders and ignored by Git; failure still creates no new project.
+
+NGC2403 JPEG diagnostic (4624×3063): no embedded WCS. D20 detects roughly 500 stars; the initial guided auto-FOV search did not solve. This is not evidence that the solver is hung. Retain diagnostics rather than claiming a successful solve.
 
 ## Optional plate solving
 

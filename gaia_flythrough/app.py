@@ -1,6 +1,7 @@
 """Shared SPACER desktop interface; Siril is an optional image source."""
 import sys
 import math
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 import threading
@@ -36,16 +37,22 @@ class Worker(QThread):
         self.pixels,self.header,self.options=pixels,header,options
         self.cancel=threading.Event()
         self.options.frame_progress=self.frame_progress.emit
+    def report(self,message):
+        print(f'[{datetime.now():%H:%M:%S}] {message}',flush=True)
+        self.progress.emit(message)
+
     def run(self):
         try:
+            self.report('Project folder: '+str(self.options.output))
             if getattr(self.options,'solve',False):
-                out=solve_project(self.options,self.progress.emit,self.cancel)
+                out=solve_project(self.options,self.report,self.cancel)
             elif getattr(self.options,'reuse',False):
-                out=resume_project(self.options.output,self.options,self.progress.emit,self.cancel)
+                out=resume_project(self.options.output,self.options,self.report,self.cancel)
             else:
-                out=run_pipeline(self.pixels,self.header,self.options,self.progress.emit,self.cancel)
+                out=run_pipeline(self.pixels,self.header,self.options,self.report,self.cancel)
             self.completed.emit(str(out))
         except Exception as exc:
+            self.report(str(exc))
             traceback.print_exc()
             self.failed.emit(str(exc))
 
@@ -354,7 +361,7 @@ class FlythroughWindow(QWidget):
         self.advanced_toggle.setChecked(True)
 
     def report_progress(self,message):
-        self.log.appendPlainText(message)
+        self.log.appendPlainText(f'[{datetime.now():%H:%M:%S}] {message}')
         self.status.setText(message if len(message)<160 else message[:157]+'…')
 
     def show_frame_progress(self,done,total,elapsed):
@@ -443,6 +450,7 @@ class FlythroughWindow(QWidget):
             self.prepared=Path(options.output).expanduser().resolve()
             self.result=None;self.preview.setEnabled(False);self.video.setEnabled(False)
             self.start.setEnabled(False);self.advanced_toggle.setEnabled(False);self.cancel_button.setEnabled(True);self.cancel_button.show()
+            if getattr(options,'solve',False): self.details_toggle.setChecked(True)
             self.advanced_dialog.close();self.start.setText('Solving…' if getattr(options,'solve',False) else 'Processing…')
             self.render_succeeded=False;self.render_counter.clear();self.render_counter.hide()
             self.progress_bar.setRange(0,0);self.progress_bar.setTextVisible(False)
