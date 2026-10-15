@@ -17,7 +17,7 @@ from astap_solver import solve_project, find_astap, resolve_astap
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QFormLayout,QHBoxLayout,
-    QLabel,QComboBox,QSpinBox,QDoubleSpinBox,QLineEdit,QPushButton,QFileDialog,
+    QLabel,QCheckBox,QComboBox,QSpinBox,QDoubleSpinBox,QLineEdit,QPushButton,QFileDialog,
     QMessageBox,QPlainTextEdit,QGroupBox,QToolButton,QProgressBar,QSizePolicy,QDialog,QDialogButtonBox,QScrollArea)
 
 
@@ -28,7 +28,7 @@ class ZoomSpinBox(QDoubleSpinBox):
 
 
 class Worker(QThread):
-    progress=pyqtSignal(str)
+    progress=pyqtSignal(str,bool)
     frame_progress=pyqtSignal(int,int,float)
     completed=pyqtSignal(str)
     failed=pyqtSignal(str)
@@ -38,8 +38,10 @@ class Worker(QThread):
         self.cancel=threading.Event()
         self.options.frame_progress=self.frame_progress.emit
     def report(self,message):
-        print(f'[{datetime.now():%H:%M:%S}] {message}',flush=True)
-        self.progress.emit(message)
+        detail=getattr(message,'detail',False)
+        if not detail or getattr(self.options,'verbose',False):
+            print(f'[{datetime.now():%H:%M:%S}] {message}',flush=True)
+        self.progress.emit(str(message),detail)
 
     def run(self):
         try:
@@ -53,7 +55,7 @@ class Worker(QThread):
             self.completed.emit(str(out))
         except Exception as exc:
             self.report(str(exc))
-            traceback.print_exc()
+            if getattr(self.options,'verbose',False): traceback.print_exc()
             self.failed.emit(str(exc))
 
 
@@ -158,7 +160,10 @@ class FlythroughWindow(QWidget):
         advanced_layout.addRow('Project folder',self.path_row(self.output,True))
         self.advanced_toggle=self.disclosure(layout,'Advanced settings',self.advanced)
 
-        self.status=QLabel('Ready to prepare this image.');self.status.setWordWrap(True);layout.addWidget(self.status)
+        self.status=QLabel('Ready to prepare this image.');self.status.setWordWrap(True)
+        self.status.setFixedHeight(self.status.fontMetrics().lineSpacing()*2+8)
+        self.status.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.status)
         self.progress_bar=QProgressBar();self.progress_bar.setRange(0,0);self.progress_bar.setTextVisible(False)
         self.progress_bar.setFixedHeight(18);self.progress_bar.hide();layout.addWidget(self.progress_bar)
         self.render_counter=QLabel();self.render_counter.setWordWrap(True);self.render_counter.hide();layout.addWidget(self.render_counter)
@@ -175,8 +180,16 @@ class FlythroughWindow(QWidget):
         self.log=QPlainTextEdit();self.log.setReadOnly(True);self.log.setMaximumBlockCount(2000)
         self.log.setMinimumHeight(130);self.log.setMaximumHeight(200)
         self.log.setAccessibleName('Processing details')
+        self.log_history=[]
+        self.verbose=QCheckBox('Verbose');self.verbose.setChecked(bool(self.preferences.data.get('verbose',False)))
+        self.verbose.setToolTip('Show solver output, commands and diagnostic details in the log and terminal.')
+        self.verbose.toggled.connect(self.change_verbosity)
         self.details_toggle=self.disclosure(layout,'Details',self.log)
-        self.log.appendPlainText('Ready. Open an image or a saved project.' if not siril else 'Ready. Current pixels are used by default. For a linear image, select linked autostretch in Advanced settings.')
+        # Keep progress and action positions stable as text/counters appear.
+        for control in (self.progress_bar,self.render_counter,self.cancel_button):
+            policy=control.sizePolicy();policy.setRetainSizeWhenHidden(True);control.setSizePolicy(policy)
+        self.render_counter.setFixedHeight(self.render_counter.fontMetrics().lineSpacing()*2+4)
+        self.append_log('Ready. Open an image or a saved project.' if not siril else 'Ready. Current pixels are used by default. For a linear image, select linked autostretch in Advanced settings.')
         self.settings=[self.flight_group,self.advanced,self.project_group]
         self.output.editingFinished.connect(self.refresh_project)
         self.refresh_project()
@@ -266,7 +279,7 @@ class FlythroughWindow(QWidget):
                 wcs=wcs if isinstance(wcs,str) and wcs and Path(wcs).is_file() else None
                 self.use_image(path,wcs)
         except (ValueError,OSError,TypeError) as exc:
-            self.log.appendPlainText('Could not reopen the last input: '+str(exc))
+            self.append_log('Could not reopen the last input: '+str(exc))
 
     def solve_image(self):
         try:
@@ -308,7 +321,9 @@ class FlythroughWindow(QWidget):
             content.setVisible(opened)
             toggle.setArrowType(Qt.ArrowType.DownArrow if opened else Qt.ArrowType.RightArrow)
             self.resize(self.width(),self.sizeHint().height())
-        toggle.toggled.connect(changed);layout.addWidget(toggle);layout.addWidget(content)
+        toggle.toggled.connect(changed)
+        row=QHBoxLayout();row.addWidget(toggle);row.addStretch();row.addWidget(self.verbose)
+        layout.addLayout(row);layout.addWidget(content)
         return toggle
 
     def zoom_percent(self):
@@ -336,6 +351,7 @@ class FlythroughWindow(QWidget):
         missing=bool(file_selected and not self.file_source.has_coordinates)
         embedded=bool(file_selected and self.file_source.has_coordinates and self.file_source.wcs_path is None)
         self.coordinates.setVisible(missing)
+        self.solver_settings.setVisible(missing)
         self.solve_button.setEnabled(missing)
         if embedded:
             kind='FITS' if self.file_source.is_fits else 'Astro-TIFF'
@@ -362,9 +378,22 @@ class FlythroughWindow(QWidget):
         self.prepared=None;self.output.setText(str(folder));self.refresh_project();self.detect_siril_date()
         self.advanced_toggle.setChecked(True)
 
-    def report_progress(self,message):
-        self.log.appendPlainText(f'[{datetime.now():%H:%M:%S}] {message}')
-        self.status.setText(message if len(message)<160 else message[:157]+'…')
+    def change_verbosity(self,enabled):
+        self.preferences.save(verbose=enabled)
+        if self.worker: self.worker.options.verbose=enabled
+        self.log.setPlainText('\n'.join(text for text,detail in self.log_history if enabled or not detail))
+        self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
+
+    def append_log(self,message,detail=False):
+        entry=f'[{datetime.now():%H:%M:%S}] {message}'
+        self.log_history.append((entry,detail));self.log_history=self.log_history[-2000:]
+        if not detail or self.verbose.isChecked(): self.log.appendPlainText(entry)
+
+    def report_progress(self,message,detail=False):
+        self.append_log(message,detail)
+        if not detail:
+            self.status.setToolTip(message)
+            self.status.setText(message if len(message)<160 else message[:157]+'…')
 
     def show_frame_progress(self,done,total,elapsed):
         if total<=0: return
@@ -452,14 +481,14 @@ class FlythroughWindow(QWidget):
             self.prepared=Path(options.output).expanduser().resolve()
             self.result=None;self.preview.setEnabled(False);self.video.setEnabled(False)
             self.start.setEnabled(False);self.advanced_toggle.setEnabled(False);self.cancel_button.setEnabled(True);self.cancel_button.show()
-            if getattr(options,'solve',False): self.details_toggle.setChecked(True)
+            options.verbose=self.verbose.isChecked()
             self.advanced_dialog.close();self.start.setText('Solving…' if getattr(options,'solve',False) else 'Processing…')
             self.render_succeeded=False;self.render_counter.clear();self.render_counter.hide()
             self.progress_bar.setRange(0,0);self.progress_bar.setTextVisible(False)
             self.progress_bar.show();self.status.setText('Starting…')
             self.load_scene.setEnabled(False)
             for control in self.settings: control.setEnabled(False)
-            self.log.appendPlainText('Outputs: '+str(self.prepared))
+            self.append_log('Outputs: '+str(self.prepared))
             self.worker=Worker(pixels,header,options)
             self.worker.progress.connect(self.report_progress)
             self.worker.frame_progress.connect(self.show_frame_progress)
@@ -529,7 +558,7 @@ class FlythroughWindow(QWidget):
             self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()
         self.prepared=folder;self.output.setText(str(folder));self.refresh_project()
         self.remember_project(folder)
-        self.log.appendPlainText(f'Tool v{VERSION} · saved field {field_description(saved_scene)}\nReusing saved image and Gaia field: '+str(folder)+
+        self.append_log(f'Tool v{VERSION} · saved field {field_description(saved_scene)}\nReusing saved image and Gaia field: '+str(folder)+
             '\nSaved image and preparation settings are used for this project.')
     def cancel(self):
         if self.worker:
@@ -543,7 +572,7 @@ class FlythroughWindow(QWidget):
         self.render_succeeded=True
         self.progress_bar.setRange(0,1000);self.progress_bar.setValue(1000);self.progress_bar.setTextVisible(True)
         self.result=Path(path);self.result_stem=self.worker.options.result_stem
-        self.report_progress('Flight ready. Open the preview or video.');self.log.appendPlainText(str(self.result/(self.result_stem+'.mp4')))
+        self.report_progress('Flight ready. Open the preview or video.');self.append_log(str(self.result/(self.result_stem+'.mp4')))
         self.preview.setEnabled(True);self.video.setEnabled(True)
     def failed(self,message):
         if self.worker and self.worker.cancel.is_set():

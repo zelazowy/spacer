@@ -192,6 +192,7 @@ class LauncherTests(unittest.TestCase):
             with patch.object(self.launcher.QFileDialog,'getOpenFileName',return_value=(str(path),'')) as chooser:
                 w.open_image();chooser.assert_called_once()
             self.assertTrue(w.start.isEnabled());self.assertFalse(w.coordinates.isVisible())
+            self.assertTrue(w.solver_settings.isHidden())
             self.assertIn('Astro-TIFF',w.project_hint.text())
             w.executable.setText('/bin/sh');w.ffmpeg.setText('/bin/sh')
             with patch.object(w,'launch') as launch:
@@ -207,6 +208,7 @@ class LauncherTests(unittest.TestCase):
         try:
             w.use_image(path)
             self.assertTrue(w.coordinates.isVisible());self.assertTrue(w.solve_button.isEnabled())
+            self.assertFalse(w.solver_settings.isHidden())
             self.assertFalse(w.start.isEnabled())
             w.astap.setText('/bin/sh')
             with patch.object(w,'launch') as launch:
@@ -221,6 +223,7 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue(w.preparation.isEnabled())
             self.assertEqual(w.engine.currentIndex(),1)
             self.assertTrue(w.start.isEnabled());self.assertFalse(w.coordinates.isVisible())
+            self.assertTrue(w.solver_settings.isHidden())
         finally: w.close()
 
     def test_navigation_survives_restart_and_missing_paths_are_safe(self):
@@ -300,3 +303,26 @@ class LauncherTests(unittest.TestCase):
             w.output.setText(str(self.folder/'another'));w.refresh_project()
             self.assertFalse(w.progress_bar.isVisible());self.assertFalse(w.render_counter.isVisible())
         finally: w.worker=None
+
+    def test_status_geometry_and_verbose_log_are_stable(self):
+        import io
+        from contextlib import redirect_stdout
+        from astap_solver import Diagnostic
+        w=self.window
+        w.cancel_button.show();w.progress_bar.show();self.app.processEvents()
+        before=(w.progress_bar.geometry(),w.cancel_button.geometry(),w.size())
+        for message in ('Removing stars…','Matching stars to Gaia and screening distance uncertainty… '*4,'Line one\nLine two'):
+            w.report_progress(message);self.app.processEvents()
+            self.assertEqual((w.progress_bar.geometry(),w.cancel_button.geometry(),w.size()),before)
+        w.report_progress('ASTAP | 2000 stars detected',True)
+        self.assertNotIn('2000 stars',w.log.toPlainText())
+        stage=w.status.text();w.verbose.setChecked(True)
+        self.assertIn('2000 stars',w.log.toPlainText());self.assertEqual(w.status.text(),stage)
+        w.verbose.setChecked(False);self.assertNotIn('2000 stars',w.log.toPlainText())
+        worker=self.launcher.Worker(None,None,SimpleNamespace(verbose=False))
+        with redirect_stdout(io.StringIO()) as output:
+            worker.report(Diagnostic('many quads'));worker.report('Solving sky position…')
+        self.assertNotIn('many quads',output.getvalue());self.assertIn('Solving sky',output.getvalue())
+        worker.options.verbose=True
+        with redirect_stdout(io.StringIO()) as output: worker.report(Diagnostic('many quads'))
+        self.assertIn('many quads',output.getvalue())

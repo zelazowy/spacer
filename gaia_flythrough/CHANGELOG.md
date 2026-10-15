@@ -1,5 +1,12 @@
 # Gaia Flythrough releases
 
+## 0.9.4 — 2026-10-15
+
+- Keep status and counter areas at fixed heights and reserve progress/cancel space; wrapped messages no longer move the controls.
+- Default to concise step logs. Add a remembered Verbose checkbox beside Details for live diagnostic output and replay of the retained session history. Technical messages do not replace the current step; raw solver files remain complete.
+- Hide Advanced ASTAP controls as well as the main solve/object fields unless a standalone image lacks a solution. Keep Details closed during solving unless the user opens it; failures still reveal it.
+- Add geometry, visibility, diagnostic-filtering/replay and terminal-verbosity regression checks. Corrective interface patch; solving and rendering algorithms are unchanged.
+
 ## 0.9.3 — 2026-10-15
 
 - Fix processed JPEG solving with a larger initial star sample, a measured compact-peak fallback and confirmation on original photographic pixels at the recovered scale. Keep original RGB pixels and source files unchanged.

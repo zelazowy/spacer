@@ -23,6 +23,11 @@ from version import VERSION, created_stamp
 from photo_date import stamp_date, date_info
 
 
+class Diagnostic(str):
+    """Verbose-only progress; retained solver logs always contain raw output."""
+    detail=True
+
+
 def find_astap():
     for value in (shutil.which('astap'),shutil.which('astap_cli'),
                   '/Applications/astap.app/Contents/MacOS/astap','/usr/local/bin/astap'):
@@ -52,7 +57,7 @@ class SolverLogTail:
         self.pending=lines.pop()
         if final and self.pending: lines.append(self.pending);self.pending=''
         for line in lines:
-            if line.strip(): self.progress('ASTAP | '+line.rstrip())
+            if line.strip(): self.progress(Diagnostic('ASTAP | '+line.rstrip()))
         return bool(data)
 
 
@@ -86,7 +91,7 @@ def run_attempt(executable,proxy,options,ra,dec,stars,log_path,progress,cancel,b
     argv=[str(executable),'-f',str(proxy),'-r',str(options.radius),'-z',str(options.binning),
           '-fov',str(options.fov),'-ra',str(ra),'-spd',str(dec+90),'-s',str(stars),'-sip','-wcs','-progress']
     if options.database: argv+=['-d',str(Path(options.database).expanduser().resolve())]
-    progress('ASTAP command: '+shlex.join(argv))
+    progress(Diagnostic('ASTAP command: '+shlex.join(argv)))
     started=time.monotonic();last_output=started;last_heartbeat=started;timed_out=False
     with log_path.open('a') as log:
         log.write('\nCommand: '+shlex.join(argv)+'\n');log.flush()
@@ -111,7 +116,7 @@ def run_attempt(executable,proxy,options,ra,dec,stars,log_path,progress,cancel,b
     if timed_out:
         progress('Attempt time limit reached; trying the next available strategy.')
         return None,'Attempt time limit reached.'
-    progress(f'ASTAP exited with code {process.returncode} after {time.monotonic()-started:.1f} s.')
+    progress(Diagnostic(f'ASTAP exited with code {process.returncode} after {time.monotonic()-started:.1f} s.'))
     if cancel.is_set(): raise InterruptedError('Plate solving cancelled.')
     values={};ini=proxy.with_suffix('.ini')
     if ini.exists():
@@ -157,7 +162,7 @@ def solve_project(options,progress=lambda message:None,cancel=None):
     source=FileImageSource(options.source,getattr(options,'wcs_path',None))
     progress('Loading solver input: '+str(source.path))
     pixels,header=source.snapshot(allow_unsolved=True)
-    progress(f'Input: {pixels.shape[2]} × {pixels.shape[1]} pixels, {pixels.shape[0]} colour channels. Original file stays unchanged.')
+    progress(Diagnostic(f'Input: {pixels.shape[2]} × {pixels.shape[1]} pixels, {pixels.shape[0]} colour channels. Original file stays unchanged.'))
     info=getattr(options,'date_info',None) or (date_info(options.epoch,'Manual date') if options.epoch else source.date_info())
     if options.epoch: header['DATE-OBS']=options.epoch
     stamp_date(header,info)
@@ -172,9 +177,9 @@ def solve_project(options,progress=lambda message:None,cancel=None):
     low=float(mono.min());high=float(mono.max())
     if high<=low: raise ValueError('This image is constant; no stars can be detected.')
     mono=(mono-low)*(65535./(high-low))
-    progress(f'ASTAP search: target {options.target or "blind/all sky"}; radius {options.radius:g}°; field height {format(options.fov,"g")+"°" if options.fov else "auto (about 0.3–10°)"}; downsampling {options.binning or "auto"}.')
-    progress('ASTAP database: '+(options.database or 'ASTAP default location'))
-    progress('Preparing the same-size monochrome solver copy…')
+    progress(Diagnostic(f'ASTAP search: target {options.target or "blind/all sky"}; radius {options.radius:g}°; field height {format(options.fov,"g")+"°" if options.fov else "auto (about 0.3–10°)"}; downsampling {options.binning or "auto"}.'))
+    progress(Diagnostic('ASTAP database: '+(options.database or 'ASTAP default location')))
+    progress(Diagnostic('Preparing the same-size monochrome solver copy…'))
     log_path=diagnostic_path(options);options.diagnostic_log=str(log_path)
     log_path.write_text(f'SPACER v{VERSION}\nSource: {source.path}\n')
     progress('Solver diagnostic log: '+str(log_path))
@@ -201,7 +206,7 @@ def solve_project(options,progress=lambda message:None,cancel=None):
             budget=remaining/(len(strategies)-index)
             search=copy.copy(options)
             if options.target.strip() and strategy!='standard': search.radius=min(options.radius,5)
-            progress(f'Attempt search radius: {search.radius:g}°.')
+            progress(Diagnostic(f'Attempt search radius: {search.radius:g}°.'))
             solved,error=run_attempt(executable,proxy,search,ra,dec,stars,log_path,progress,cancel,budget)
             attempts.append(dict(strategy=strategy,stars=stars,fov=search.fov,radius=search.radius,solved=solved is not None,error=error))
             if solved is not None:
@@ -238,14 +243,14 @@ def solve_project(options,progress=lambda message:None,cancel=None):
                         if candidate is not None:
                             accepted,comparison=refinement_consistent(seed,candidate,pixels.shape[2],pixels.shape[1])
                             if 'inexact scale' in str(candidate.get('WARNING','')).lower(): accepted=False
-                            progress(('Refinement accepted: ' if accepted else 'Refinement rejected: ')+comparison)
+                            progress(Diagnostic(('Refinement accepted: ' if accepted else 'Refinement rejected: ')+comparison))
                             if not accepted: error='Refined WCS failed consistency/scale checks.'
                         attempts.append(dict(strategy='original-refinement',stars=refinement_stars,fov=guided.fov,radius=guided.radius,solved=candidate is not None,accepted=accepted,error=error))
                         if accepted:
                             solved=candidate;strategy=strategy+'+original-refinement';stars=refinement_stars;break
                         progress('Retrying refinement with another star sample/scale bracket.' if refinement_index<2 else 'No reliable refinement; trying the next search strategy.')
             if solved is not None:
-                progress('Successful ASTAP strategy: '+strategy);break
+                progress(Diagnostic('Successful ASTAP strategy: '+strategy));break
             progress('Attempt did not solve: '+error)
         if solved is None:
             if time.monotonic()>=deadline: error='ASTAP timed out.'

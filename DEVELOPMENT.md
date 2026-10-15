@@ -1,7 +1,7 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.9.3 repairs processed-image solving and surfaces the optional object hint; 0.9.2 streams solver diagnostics; 0.9.1 improves render progress; 0.9.0 infers matching dates with provenance; 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.9.4 stabilizes progress layout and adds opt-in verbose diagnostics; 0.9.3 repairs processed-image solving and surfaces the optional object hint; 0.9.2 streams solver diagnostics; 0.9.1 improves render progress; 0.9.0 infers matching dates with provenance; 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
@@ -47,7 +47,7 @@ Explain that observation date is for Gaia proper-motion matching, not an export 
 
 ## Solver diagnostics
 
-Worker stage messages go to both timestamped terminal output and the in-app Details log. ASTAP stdout/stderr is captured in a retained per-attempt `.spacer-logs/` file and tailed incrementally while the process runs. Enable its `-progress` flag; preserve split UTF-8 characters and partial/CR-delimited lines. Poll without blocking cancellation; report elapsed time after ten seconds of quiet. Do not wait until exit or keep only the last lines. Keep errors concise and link the full log path. Persistent logs are outside project folders and ignored by Git; failure still creates no new project.
+Worker stage messages go to both timestamped terminal output and the in-app Details log. Diagnostic string events carry a detail flag through the worker signal; verbose-only output never replaces the stage label. Default terminal/Details output is concise. The persisted Verbose checkbox can be changed while running; the in-app bounded session history can be refiltered, while terminal verbosity applies to future events. Keep complete raw solver logs regardless of verbosity. ASTAP stdout/stderr is captured in a retained per-attempt `.spacer-logs/` file and tailed incrementally while the process runs. Enable its `-progress` flag; preserve split UTF-8 characters and partial/CR-delimited lines. Poll without blocking cancellation; report elapsed time after ten seconds of quiet. Do not wait until exit or keep only the last lines. Keep errors concise and link the full log path. Persistent logs are outside project folders and ignored by Git; failure still creates no new project.
 
 NGC2403 JPEG diagnostic (4624×3063): no embedded WCS. The old 500-star search failed although the matching linear FITS solved immediately. Raising the sample to 2000 found the processed field; refinement on original mono pixels at the measured scale with 5000 stars recovered SIP and reduced corner differences from ~90 arcsec to <2 arcsec against its existing FITS solution. Preserve full diagnostics across all attempts.
 
@@ -80,3 +80,5 @@ Large M45/NGC6914 audit fields and videos are excluded from Git. Locate an exist
 ## New-chat prompt
 
 Continue developing SPACER in this repository. Read README.md, DEVELOPMENT.md and gaia_flythrough/CHANGELOG.md, then inspect the code and git status. Preserve the Iterative-only workflow, persistent projects, reusable prepared fields, provenance and non-overwriting exports. Keep scientific confidence separate from cosmetic motion. Bump the shared version and update the changelog for shipped changes. Run relevant tests; inspect real first/middle/final frames and bright-star close-ups for visual changes. My next requested change is: [describe change].
+
+Progress layout: reserve two lines for stage/counters and retain hidden progress/cancel sizes. New messages must not change window/progress/action geometry. Show main and Advanced solver controls only when a selected standalone image lacks usable coordinates. Test visibility transitions, geometry under wrapped messages, verbose filtering/replay and terminal suppression.
