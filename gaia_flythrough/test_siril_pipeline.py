@@ -124,5 +124,17 @@ class PipelineTests(unittest.TestCase):
                 self.assertNotIn('EASERAMP',(out/(options.result_stem+'.html')).read_text())
                 np.testing.assert_array_equal(photo,original)
 
+    def test_excessive_fov_is_rejected_before_outputs_or_star_removal(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder)/'too-wide'
+            wcs=WCS(naxis=2);wcs.wcs.ctype=['RA---TAN','DEC--TAN']
+            wcs.wcs.crval=[42,89.5];wcs.wcs.crpix=[8,6];wcs.wcs.cdelt=[-1,1]
+            options=SimpleNamespace(output=str(out))
+            with patch('siril_pipeline.run_engine') as engine:
+                with self.assertRaisesRegex(ValueError,'central crop'):
+                    run_pipeline(np.zeros((3,12,16)),wcs.to_header(),options)
+                engine.assert_not_called()
+            self.assertFalse(out.exists())
+
 
 if __name__=='__main__': unittest.main()

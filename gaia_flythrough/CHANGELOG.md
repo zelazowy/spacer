@@ -1,5 +1,11 @@
 # Gaia Flythrough releases
 
+## 0.9.8 — 2026-10-15
+
+- Bound new preparation to a 5° centre-to-footprint radius (about a 10° diagonal), retaining support for the tested 300 mm full-frame Polaris field.
+- Reject larger fields before creating new outputs, running star removal or requesting Gaia data. Suggest an approximate central crop size and ask for a newly solved cropped image in a new project; never alter source pixels automatically.
+- Use the saved solution when resuming incomplete projects; prepared historical scenes keep rendering directly. Add limit/crop and early-rejection regression checks. Corrective scope/usability patch; no extraction changes.
+
 ## 0.9.7 — 2026-10-15
 
 - Replace the prototype's 3° catalogue-radius rejection with overlapping spherical image-region queries. Cover polar fields and RA wrap; keep compact fields to one request when possible.

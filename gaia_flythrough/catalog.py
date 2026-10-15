@@ -13,6 +13,7 @@ from astropy.io.votable import parse_single_table
 
 ENDPOINT='https://dc.g-vo.org/tap'
 MAX_ROWS=200000
+MAX_FIELD_RADIUS=5.0
 COLUMNS=('source_id','ra','dec','pmra','pmdec','ruwe','phot_g_mean_mag','r_med_geo','r_lo_geo','r_hi_geo')
 
 
@@ -33,6 +34,20 @@ def region_cone(wcs,bounds):
     if not np.isfinite(radius) or not 0<radius<90:
         raise ValueError('Invalid or excessively distorted catalogue footprint. Check the image plate solution.')
     return float(center.ra.deg),float(center.dec.deg),radius
+
+
+def validate_field(wcs,width,height):
+    """Bound new preparation cost; suggest a central crop before any heavy work."""
+    radius=region_cone(wcs,(0,width-1,0,height-1))[2]/1.05
+    if radius>MAX_FIELD_RADIUS:
+        fraction=min(.98,np.tan(np.deg2rad(MAX_FIELD_RADIUS))/np.tan(np.deg2rad(radius))*.98)
+        crop_width=max(1,int(width*fraction));crop_height=max(1,int(height*fraction))
+        raise ValueError(
+            f'This field spans about {2*radius:.1f}° corner to corner; SPACER limits new preparation to about {2*MAX_FIELD_RADIUS:g}° '
+            f'(centre-to-edge radius {MAX_FIELD_RADIUS:g}°). '
+            f'Try a central crop of about {crop_width} × {crop_height} pixels or smaller, keeping the same aspect ratio. '
+            'Plate-solve the cropped image and open it as a new project.')
+    return radius
 
 
 def split_region(bounds):
@@ -146,6 +161,7 @@ def cached_rows(path):
 def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None):
     path=Path(path)
     check_cancel(cancel)
+    validate_field(wcs,width,height)
     # Historical project catalogues remain authoritative, as before.
     if path.exists():
         with path.open() as file: return list(csv.DictReader(file))

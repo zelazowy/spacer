@@ -14,6 +14,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 import tifffile
 from flythrough import prepare, render_video
+from catalog import validate_field
 from version import VERSION, created_stamp
 from photo_date import stamp_date, date_info
 
@@ -149,7 +150,8 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
         with fits.open(out/'source_wcs.fits') as saved:
             photo=normalized_pixels(saved[0].data)
             header=saved[0].header.copy()
-    else:
+    validate_field(WCS(header,naxis=2).celestial,photo.shape[2],photo.shape[1])
+    if not out.exists():
         out.mkdir(parents=True)
         save_project(out, created_with_version=VERSION, created_at=created_stamp(),
             source=str(options.source), engine=options.engine, executable=options.executable,

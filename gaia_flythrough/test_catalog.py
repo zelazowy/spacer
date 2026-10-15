@@ -142,3 +142,15 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(rows[0]['source_id'],'123')
         self.assertIn(b'FORMAT=votable',request.call_args_list[0].args[0].data)
         self.assertIn(b'MAXREC=200000',request.call_args_list[0].args[0].data)
+
+    def test_field_limit_accepts_300mm_full_frame_and_suggests_crop_for_wider_input(self):
+        from catalog import validate_field
+        self.assertLess(validate_field(field(scale=.0115),601,401),5)
+        w=field(scale=.02)
+        with self.assertRaisesRegex(ValueError,'central crop.*Plate-solve'):
+            validate_field(w,601,401)
+        with tempfile.TemporaryDirectory() as folder,patch('catalog.query_region') as query:
+            path=Path(folder)/'catalog.csv'
+            with self.assertRaisesRegex(ValueError,'limits new preparation'):
+                get_catalog(w,601,401,path,18,lambda _:None)
+            query.assert_not_called();self.assertFalse((Path(folder)/'catalog-parts').exists())

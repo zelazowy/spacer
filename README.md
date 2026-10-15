@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.9.7**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.9.8**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -85,7 +85,7 @@ Progress and cancellation stay in the main window. Video export shows a filling 
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.9.7_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.9.7_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.9.8_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.9.8_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -106,7 +106,9 @@ Siril's Python environment needs numpy, scipy, astropy, Pillow, tifffile and PyQ
 
 ## Wider fields and catalogue caching
 
-Wide photographs, including a 300 mm full-frame Polaris field, no longer hit the prototype's 3° catalogue-radius restriction. SPACER divides wider image footprints into overlapping sky regions, handles the celestial poles and RA wrap, and merges stars by their Gaia identifiers. Compact fields retain one request unless the result is too dense. Catalogue magnitude and distance/quality screens are unchanged.
+New preparation supports a centre-to-edge radius up to **5°** (about **10° across the diagonal**). Your 300 mm full-frame Polaris field is within that limit. Wider inputs stop before star removal or catalogue downloads, with a suggested central crop size. Crop in your image editor, plate-solve the cropped result and open it as a new project. Crop dimensions are approximate and the new solution is checked again; SPACER does not crop or modify the source automatically.
+
+Supported wide photographs no longer hit the prototype's old 3° catalogue-radius restriction. SPACER divides wider image footprints into overlapping sky regions, handles the celestial poles and RA wrap, and merges stars by their Gaia identifiers. Compact fields retain one request unless the result is too dense. Catalogue magnitude and distance/quality screens are unchanged.
 
 Downloads check the service's completion/overflow status. A truncated region is subdivided rather than accepted or made shallower. Completed requests are saved atomically in `catalog-parts/`; retries reuse matching parts, including after cancellation or network failure. `catalog.csv` appears only after every required region is complete. Existing saved catalogues and prepared scenes are reused as before. Open your interrupted project and choose **Resume and render** to reuse its saved star-removal output.
 
@@ -140,7 +142,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.9.7**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.9.7_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.9.8**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.9.8_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 
