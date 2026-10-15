@@ -95,19 +95,63 @@ def export_layers(photo,starless,output):
         image.save(output/f'{name}.jpg',quality=98,subsampling=0)
 
 
+def read_project(out):
+    path=Path(out)/'project.json'
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def save_project(out, **changes):
+    """Atomically commit project state only after a stage succeeds."""
+    out=Path(out)
+    state=read_project(out)
+    state.update(changes, schema=1, updated_with_version=VERSION, updated_at=created_stamp())
+    temporary=out/'project.json.tmp'
+    temporary.write_text(json.dumps(state,indent=2,allow_nan=False))
+    temporary.replace(out/'project.json')
+
+
+def resume_project(out, options, progress=lambda message:None, cancel=None):
+    """Resume the saved snapshot; never consult the currently open Siril image."""
+    out=Path(out)
+    if (out/'scene.json').exists() or (out/'scene_iterative.json').exists() or (out/'preview.html').exists():
+        return render_prepared(out,options,progress,cancel)
+    state=read_project(out)
+    if not state or not (out/'source_wcs.fits').exists():
+        raise ValueError('This folder is not a SPACER project. Choose a new project folder.')
+    options.engine=state['engine']
+    options.executable=state['executable']
+    options.epoch=state['epoch']
+    options.source=state['source']
+    with fits.open(out/'source_wcs.fits') as hdul:
+        return run_pipeline(hdul[0].data,hdul[0].header,options,progress,cancel)
+
+
 def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None):
     cancel=cancel or threading.Event()
     photo=normalized_pixels(pixels)
     if not has_solution(header):
         raise ValueError(UNSOLVED_MESSAGE)
     out=Path(options.output).expanduser().resolve()
-    out.mkdir(parents=True,exist_ok=False)
+    if out.exists():
+        if not read_project(out) or not (out/'source_wcs.fits').exists():
+            raise ValueError('Existing folder is not a resumable SPACER project.')
+        with fits.open(out/'source_wcs.fits') as saved:
+            photo=normalized_pixels(saved[0].data)
+            header=saved[0].header.copy()
+    else:
+        out.mkdir(parents=True)
+        save_project(out, created_with_version=VERSION, created_at=created_stamp(),
+            source=str(options.source), engine=options.engine, executable=options.executable,
+            epoch=str(options.epoch or header.get('DATE-OBS','')), stage='snapshot')
+    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg)
     header=header.copy();header['ROWORDER']='BOTTOM-UP'
     if options.epoch: header['DATE-OBS']=str(options.epoch)
-    fits.PrimaryHDU(photo,header).writeto(out/'source_wcs.fits')
+    if not (out/'source_wcs.fits').exists():
+        fits.PrimaryHDU(photo,header).writeto(out/'source_wcs.fits')
     if options.engine=='StarXTerminator':
         starless_path=out/'starless_work.fits'
-        run_engine([options.executable,'sxt',str(out/'source_wcs.fits'),
+        if read_project(out).get('starless_complete') is not True or not starless_path.exists():
+            run_engine([options.executable,'sxt',str(out/'source_wcs.fits'),
                     '--output',str(starless_path),'--depth','32F'],
                    str(Path(options.executable).parent),out/'star-removal.log',cancel,progress)
         with fits.open(starless_path) as hdul:
@@ -117,7 +161,8 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
     else:
         input_path=out/'starnet_input.tif';starless_path=out/'starless_work.tif'
         tifffile.imwrite(input_path,np.uint16(np.flipud(np.moveaxis(photo,0,-1))*65535),photometric='rgb')
-        run_engine([options.executable,'--input',str(input_path),'--output',str(starless_path)],
+        if read_project(out).get('starless_complete') is not True or not starless_path.exists():
+            run_engine([options.executable,'--input',str(input_path),'--output',str(starless_path)],
                    str(Path(options.executable).parent),out/'star-removal.log',cancel,progress)
         # Pillow decodes StarNet's LZW RGB TIFF without an extra codec package.
         # The photographic layers are exported as 8-bit RGB in either branch.
@@ -129,6 +174,7 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
     if cancel.is_set(): raise InterruptedError('Cancelled.')
     progress('Saving photo and starless JPEGs (lossless PNGs used internally)…')
     export_layers(photo,starless,out)
+    save_project(out,starless_complete=True,stage='matching')
     if not (options.epoch or header.get('DATE-OBS')):
         raise ValueError('Observation date is missing. Enter its date in the script window and retry.')
     args=argparse.Namespace(photo=out/'photo.png',starless=out/'starless.png',wcs=out/'source_wcs.fits',
@@ -139,21 +185,8 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
     scene,background=prepare(args,out)
     if cancel.is_set(): raise InterruptedError('Cancelled after catalogue matching.')
     (out/'scene.json').write_text(json.dumps(scene,allow_nan=False))
-    for name in ('matched_stars','rejected_blends'):
-        if (out/(name+'.csv')).exists(): shutil.copyfile(out/(name+'.csv'),out/(name+'_natural.csv'))
-    args.mode='dynamic'
-    progress('Preparing Dynamic mode from the same images and cached Gaia data…')
-    dynamic,dynamic_background=prepare(args,out)
-    (out/'scene_dynamic.json').write_text(json.dumps(dynamic,allow_nan=False))
-    for name in ('matched_stars','rejected_blends'):
-        if (out/(name+'.csv')).exists(): shutil.copyfile(out/(name+'.csv'),out/(name+'_dynamic.csv'))
-        if (out/(name+'_natural.csv')).exists(): shutil.copyfile(out/(name+'_natural.csv'),out/(name+'.csv'))
-    if cancel.is_set(): raise InterruptedError('Cancelled after preparing both modes.')
-    if getattr(options,'mode','natural')=='iterative':
-        return render_prepared(out,options,progress,cancel)
-    use_dynamic=getattr(options,'mode','natural')=='dynamic'
-    return render_prepared(out,options,progress,cancel,
-        dynamic if use_dynamic else scene,dynamic_background if use_dynamic else background)
+    save_project(out,stage='refinement')
+    return render_prepared(out,options,progress,cancel)
 
 
 def load_prepared_scene(out):
@@ -175,8 +208,8 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     """Render a new variant using the saved field, without another Gaia/AI run."""
     out=Path(out).resolve()
     cancel=cancel or threading.Event()
-    mode=getattr(options,'mode','natural')
-    if mode not in ('natural','dynamic','iterative'): raise ValueError('Unknown rendering mode.')
+    mode='iterative'
+    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg)
     if scene is None:
         if mode=='iterative':
             path=out/'scene_iterative.json'
@@ -188,15 +221,10 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
                     progress('Updating cached spike separation using the saved field.')
                 natural=load_prepared_scene(out)
                 if natural.get('extraction_version',0)<4:
-                    raise ValueError('Create a new flight with Natural preparation before iterative refinement.')
+                    raise ValueError('This legacy field needs fresh preparation. Choose a new project folder; old exports are preserved.')
                 from iterative_deblend import refine_prepared_field
                 scene,background=refine_prepared_field(natural,out,progress,cancel)
                 path.write_text(json.dumps(scene,allow_nan=False))
-        elif mode=='dynamic':
-            path=out/'scene_dynamic.json'
-            if not path.exists(): raise ValueError('Create a new flight to prepare both modes; this older cache has no Dynamic field.')
-            scene=json.loads(path.read_text())
-        else: scene=load_prepared_scene(out)
         background=np.asarray(Image.open(io.BytesIO(base64.b64decode(scene['background'].split(',')[1]))),dtype=float)/255
     if scene.get('extraction_version',0)<4:
         progress('This cached field uses older extraction. Create a new flight to apply compact-core fitting; rendering alone does not repair old patches.')
@@ -221,5 +249,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
         duration_seconds=args.seconds,fps=24,
         final_zoom=args.zoom,travel_pc=80,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
     render_video(scene,background,args,out/(stem+'.mp4'))
+    save_project(out,stage='ready',seconds=options.seconds,zoom=options.zoom,
+        ffmpeg=options.ffmpeg,last_render=stem)
     progress('Complete.')
     return out

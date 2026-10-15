@@ -1,5 +1,23 @@
 # Gaia Flythrough releases
 
+## 0.5.0 — 2026-10-15
+
+- Reorganize the Siril window around Project and Flight, with one primary action for preparation, resuming or rendering.
+- Move stretch, star-removal tools, observation date, FFmpeg and folder paths into a scrollable Advanced settings dialog; automatically reveal required setup errors.
+- Keep status and indeterminate progress visible; hide diagnostics under Details, opening it after processing errors. Show cancellation while processing and lock project/settings changes until the worker stops.
+- Add explicit New from Siril project creation, readable saved/current-image summaries, automatic installed-engine selection and a live zoom magnification hint.
+- Preserve native Qt controls/palette, existing defaults, Iterative extraction, caches and export provenance. Add five offscreen interface workflow tests and inspect rendered UI states.
+- Minor feature release; extraction schemas and Iterative cache revision remain unchanged.
+
+## 0.4.0 — 2026-10-15
+
+- Iterative is the sole Siril scene style; new projects no longer prepare Dynamic scenes.
+- Stable per-image project folders replace timestamped defaults. Open projects across restarts with saved duration, zoom, FFmpeg and latest export links.
+- Atomic `project.json` records schema, project provenance, preparation progress and render settings separately from field/export provenance.
+- Resume partial projects using the saved snapshot, validated star-removal output and cached catalogue. Completed fields reuse all analysis for new render variants.
+- Older prepared folders remain importable; historical exports and Natural/Dynamic assets are preserved. Changed source pixels or removal choices use a separate project folder.
+- Minor feature release under major.minor.patch rules; extraction schemas and Iterative revision are unchanged.
+
 ## 0.3.0 — 2026-10-15
 
 First explicit release baseline after the M45 iterative experiments.

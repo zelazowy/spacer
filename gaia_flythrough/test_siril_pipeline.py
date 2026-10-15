@@ -9,7 +9,7 @@ from PIL import Image
 from astropy.io import fits
 from astropy.wcs import WCS
 import tifffile
-from siril_pipeline import normalized_pixels, parse_header, run_pipeline, render_prepared, has_solution, UNSOLVED_MESSAGE
+from siril_pipeline import normalized_pixels, parse_header, run_pipeline, render_prepared, has_solution, UNSOLVED_MESSAGE, resume_project, save_project, read_project
 from flythrough import png_data
 from version import VERSION
 import json
@@ -19,37 +19,25 @@ class PipelineTests(unittest.TestCase):
     def test_variants_reuse_saved_scene_and_never_overwrite(self):
         with tempfile.TemporaryDirectory() as folder:
             out=Path(folder)
-            scene=dict(stars=[],width=16,height=12,background=png_data(np.zeros((12,16,3))))
-            (out/'scene.json').write_text(json.dumps(scene))
+            scene=dict(stars=[],width=16,height=12,background=png_data(np.zeros((12,16,3))),extraction_version=6,iterative_revision=2)
+            (out/'scene_iterative.json').write_text(json.dumps(scene))
             options=SimpleNamespace(seconds=20,zoom=900,ffmpeg='ffmpeg')
             with patch('siril_pipeline.prepare') as prepare_field,patch('siril_pipeline.run_engine') as engine,patch('siril_pipeline.render_video') as render:
                 render_prepared(out,options)
-                self.assertEqual(options.result_stem,f'flythrough_v{VERSION}_natural_20s_zoom900pct_24fps')
+                self.assertEqual(options.result_stem,f'flythrough_v{VERSION}_iterative_20s_zoom900pct_24fps')
                 html=(out/(options.result_stem+'.html')).read_text()
                 self.assertIn('render_version',html)
                 metadata=json.loads((out/(options.result_stem+'.json')).read_text())
                 self.assertEqual(metadata['tool_version'],VERSION)
                 self.assertEqual(metadata['field_version'],'unversioned')
                 self.assertTrue(metadata['created_at'].endswith('+00:00'))
-                self.assertNotIn('render_version',json.loads((out/'scene.json').read_text()))
+                self.assertNotIn('render_version',json.loads((out/'scene_iterative.json').read_text()))
                 self.assertIn('value="10.0"',html)
                 self.assertNotIn('MAXZOOM',html)
                 render_prepared(out,options)
-                self.assertEqual(options.result_stem,f'flythrough_v{VERSION}_natural_20s_zoom900pct_24fps_02')
+                self.assertEqual(options.result_stem,f'flythrough_v{VERSION}_iterative_20s_zoom900pct_24fps_02')
                 prepare_field.assert_not_called();engine.assert_not_called()
                 self.assertEqual(render.call_count,2)
-                (out/'scene_dynamic.json').write_text(json.dumps(dict(scene,mode='dynamic')))
-                options.mode='dynamic'
-                render_prepared(out,options)
-                self.assertEqual(render.call_args.args[0]['mode'],'dynamic')
-                self.assertIn(f'flythrough_v{VERSION}_dynamic_',options.result_stem)
-                (out/'scene_iterative.json').write_text(json.dumps(dict(scene,mode='iterative',extraction_version=6,iterative_revision=2)))
-                options.mode='iterative'
-                with patch('iterative_deblend.refine_prepared_field') as refit:
-                    render_prepared(out,options)
-                    refit.assert_not_called()
-                self.assertEqual(render.call_args.args[0]['mode'],'iterative')
-                self.assertIn(f'flythrough_v{VERSION}_iterative_',options.result_stem)
 
     def test_old_iterative_cache_upgrades_from_saved_natural_field(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -109,10 +97,20 @@ class PipelineTests(unittest.TestCase):
                     self.assertEqual(args.wcs,(out/'source_wcs.fits').resolve())
                     self.assertEqual(args.ease_seconds,1.5)
                     self.assertEqual(args.fps,24)
-                    return dict(stars=[],width=16,height=12),np.zeros((12,16,3))
-                with patch('siril_pipeline.run_engine',fake_engine),patch('siril_pipeline.prepare',fake_prepare),patch('siril_pipeline.render_video') as render:
+                    return dict(stars=[],width=16,height=12,background=png_data(np.zeros((12,16,3))),extraction_version=4),np.zeros((12,16,3))
+                with patch('siril_pipeline.run_engine',fake_engine),patch('siril_pipeline.prepare',fake_prepare),patch('siril_pipeline.render_video') as render,patch('iterative_deblend.refine_prepared_field',return_value=(dict(stars=[],width=16,height=12,background=png_data(np.zeros((12,16,3))),extraction_version=6,iterative_revision=2),np.zeros((12,16,3)))):
                     run_pipeline(photo,header,options,cancel=threading.Event())
                     render.assert_called_once()
+                    # A restarted project uses the saved field, even with no current pixels.
+                    with patch('siril_pipeline.run_engine') as repeated_engine,patch('siril_pipeline.prepare') as repeated_prepare:
+                        resume_project(out,options)
+                        repeated_engine.assert_not_called();repeated_prepare.assert_not_called()
+                    self.assertEqual(read_project(out)['seconds'],30)
+                    (out/'scene.json').unlink()
+                    (out/'scene_iterative.json').unlink()
+                    with patch('siril_pipeline.run_engine') as repeated_engine:
+                        resume_project(out,options)
+                        repeated_engine.assert_not_called()
                 raster=np.asarray(Image.open(out/'starless.png'))/255
                 np.testing.assert_allclose(raster,np.flipud(np.moveaxis(expected,0,-1)),atol=1/255)
                 self.assertTrue((out/'photo.jpg').exists())
