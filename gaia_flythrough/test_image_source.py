@@ -55,3 +55,44 @@ class ImageSourceTests(unittest.TestCase):
     def _raster_without_wcs(self):
         path=self.folder/'image.png';Image.new('RGB',(16,12)).save(path)
         return FileImageSource(path).header()
+
+    def test_astro_tiff_reads_short_cards_line_endings_date_and_sip(self):
+        header=self.header.copy();header['SIMPLE']=True
+        header['CTYPE1']='RA---TAN-SIP';header['CTYPE2']='DEC--TAN-SIP'
+        header['A_ORDER']=2;header['B_ORDER']=2;header['A_2_0']=1e-5;header['B_0_2']=-1e-5
+        # Astro-TIFF permits missing structural keywords; TIFF dimensions lead.
+        cards=['SIMPLE  =                    T']+[str(card).rstrip() for card in header.cards if card.keyword!='SIMPLE']+['END']
+        raster=np.flipud(np.moveaxis(self.photo,0,-1))
+        for ending in ('\n','\r\n'):
+            path=self.folder/('astro'+str(len(ending))+'.tif')
+            tifffile.imwrite(path,raster,photometric='rgb',description=ending.join(cards),metadata=None)
+            before=path.read_bytes()
+            source=FileImageSource(path)
+            self.assertTrue(source.has_coordinates)
+            pixels,saved=source.snapshot()
+            np.testing.assert_array_equal(pixels,self.photo)
+            self.assertEqual(saved['DATE-OBS'],header['DATE-OBS'])
+            self.assertEqual(saved['NAXIS1'],16);self.assertEqual(saved['NAXIS2'],12)
+            self.assertEqual(saved['A_2_0'],1e-5)
+            np.testing.assert_allclose(WCS(saved,naxis=2).all_pix2world([[2,3]],0),WCS(header,naxis=2).all_pix2world([[2,3]],0))
+            self.assertEqual(path.read_bytes(),before)
+
+    def test_tiff_orientation_is_independent_of_embedded_roworder(self):
+        for orientation in (1,2,3,4):
+            for roworder in ('TOP-DOWN','BOTTOM-UP'):
+                header=self.header.copy();header.insert(0,('SIMPLE',True));header['ROWORDER']=roworder
+                pixels=self.photo.copy()
+                if orientation in (1,2): pixels=np.flip(pixels,axis=-2)
+                if orientation in (2,3): pixels=np.flip(pixels,axis=-1)
+                path=self.folder/f'orientation{orientation}{roworder}.tif'
+                tifffile.imwrite(path,np.moveaxis(pixels,0,-1),photometric='rgb',description=header.tostring(sep='\n',padding=False),metadata=None,extratags=[(274,'H',1,orientation,False)])
+                actual,_=FileImageSource(path).snapshot()
+                np.testing.assert_array_equal(actual,self.photo)
+
+    def test_unsolved_or_incomplete_tiff_metadata_needs_reference(self):
+        for description in ('ordinary description','SIMPLE  = T\nEND','SIMPLE  = T\nCTYPE1 = RA---TAN'):
+            path=self.folder/'unsolved.tif'
+            tifffile.imwrite(path,np.moveaxis(self.photo,0,-1),photometric='rgb',description=description,metadata=None)
+            source=FileImageSource(path)
+            self.assertFalse(source.has_coordinates)
+            with self.assertRaisesRegex(ValueError,'no embedded plate solution'): source.snapshot()

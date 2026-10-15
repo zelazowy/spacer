@@ -1,13 +1,13 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.6.1 clarifies raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
 - SPACER.py: standalone desktop entry point; opens FITS, TIFF/PNG plus WCS, or an existing project.
 - gaia_flythrough/app.py: shared Qt interface and worker; no Siril import.
-- gaia_flythrough/image_source.py: disk input validation and channel/row normalization.
+- gaia_flythrough/image_source.py: disk input validation, embedded Astro-TIFF FITS-header parsing and channel/row normalization.
 - Siril_Gaia_Flythrough.py: thin Siril launcher; snapshots current pixels and WCS without modifying the source. Requires an existing plate solution; suggests Siril/ASTAP when absent. Automatic solving was deliberately excluded.
 - gaia_flythrough/siril_pipeline.py: export, external removal engines, cached fields and non-overwriting render variants.
 - gaia_flythrough/flythrough.py: catalogue matching, compact-star extraction, subpixel rendering and prototype CLI.
@@ -31,6 +31,8 @@ Defaults: 60 seconds, 1.3× final zoom, 24 fps, 80 pc travel, 1.5-second easing 
 Never overwrite exports. Names record version/mode/duration/zoom; collisions get numeric suffixes. Field preparation version/time and rendering version/time are separate. Historical unversioned analysis must remain labelled unversioned.
 
 Commit each completed change with its release version in the commit message. Keep each change independently referenceable; bump the shared version and changelog under the major.minor.patch rules.
+
+Astro-TIFF uses ImageDescription tag 270, short FITS cards and LF/CRLF endings. TIFF dimensions are authoritative; preserve WCS/SIP/date cards and use the TIFF Orientation tag for raster storage, not the embedded ROWORDER. Tested with local M45/M33/M13/zenith Astro-TIFF files.
 
 Standalone launches must not import `sirilpy` or require Siril. Keep image loading at the source boundary and share the same project/render pipeline between entry points. Treat TIFF/PNG WCS references as user-supplied framing assertions; validate dimensions, do not claim that dimensions verify registration.
 

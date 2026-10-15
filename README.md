@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.6.1**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.6.2**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -19,7 +19,7 @@ python SPACER.py
 
 On Windows, activate with `.venv\Scripts\activate` instead. FFmpeg and a supported star-removal engine must be installed separately. SPACER discovers them automatically; change their paths in Advanced settings.
 
-Click **Open image…** to select an already-stretched, plate-solved FITS file. After opening a TIFF/PNG, the main window shows **Sky coordinates needed** and a **Choose solved FITS…** button. Select a solved FITS with exactly the same pixel dimensions and framing; WCS/date come from that FITS. This is a coordinate reference, not the output destination. Cancelling that chooser keeps your photo selected. The project/output folder is chosen automatically beside the photo and can be changed in Advanced settings. Matching dimensions cannot prove matching framing: do not use a cropped, rotated or differently registered reference. Standard bottom-up FITS and explicit `ROWORDER=TOP-DOWN` are supported; ordinary TIFF/PNG rasters are converted to the internal bottom-up orientation. Monochrome and RGB images are supported; alpha and multipage/sequence inputs are rejected. Some compressed TIFFs need an optional codec; export uncompressed TIFF if prompted.
+Click **Open image…** to select an already-stretched, plate-solved FITS or Astro-TIFF file. Astro-TIFF (including Siril/ASTAP exports) automatically supplies its embedded plate solution, SIP distortion terms and observation date when present; no separate reference is needed. SPACER reads the FITS-style `ImageDescription` metadata defined by the [Astro-TIFF specification](https://siril.readthedocs.io/en/stable/file-formats/Astro-TIFF.html). After opening a plain TIFF/PNG without a usable embedded solution, the main window shows **Sky coordinates needed** and a **Choose solved FITS…** button. Select a solved FITS with exactly the same pixel dimensions and framing; WCS/date come from that FITS. This is a coordinate reference, not the output destination. Cancelling that chooser keeps your photo selected. The project/output folder is chosen automatically beside the photo and can be changed in Advanced settings. Matching dimensions cannot prove matching framing: do not use a cropped, rotated or differently registered reference. Standard bottom-up FITS and explicit `ROWORDER=TOP-DOWN` are supported; TIFF raster orientation is read from its Orientation tag independently of embedded ROWORDER, and converted to the internal bottom-up convention. Rotated TIFF orientations 5–8 are rejected with an export instruction. PNG uses top-down raster storage. Monochrome and RGB images are supported; alpha and multipage/sequence inputs are rejected. Some compressed TIFFs need an optional codec; export uncompressed TIFF if prompted.
 
 File pixels must already be stretched and normalized (floating pixels in [0,1]; integer images use their datatype range). The standalone app does not run a plate solver or Siril's autostretch. Use your preferred image editor/solver first. **Open project…** reopens any prepared project from either launcher, without opening the source image or Siril. Source files stay unchanged.
 
@@ -66,7 +66,7 @@ Progress and cancellation stay in the main window. **Details** reveals the proce
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.6.1_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.6.1_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.6.2_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.6.2_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -113,7 +113,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.6.1**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.6.1_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.6.2**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.6.2_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 

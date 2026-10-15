@@ -158,7 +158,7 @@ class FlythroughWindow(QWidget):
     def use_image(self,path,wcs_path=None):
         source=FileImageSource(path,wcs_path)
         # Validate the header before changing the selected project.
-        if source.wcs_path: source.header()
+        if source.has_coordinates: source.header()
         self.file_source=source;self.prepared=None;self.epoch.clear()
         self.output.setText(str(source.path.parent/'flythrough'/source.path.stem))
         self.refresh_project()
@@ -210,9 +210,11 @@ class FlythroughWindow(QWidget):
             self.preview.setEnabled(False);self.video.setEnabled(False)
         self.status.setText('Ready to render from the saved project.' if saved else ('Ready to prepare this image.' if self.siril or self.file_source else 'Open an image or project to begin.'))
         raster=bool(not self.siril and self.file_source and not self.file_source.is_fits and not saved)
-        missing=bool(raster and self.file_source.wcs_path is None)
-        self.coordinates.setVisible(raster)
-        if raster:
+        missing=bool(raster and not self.file_source.has_coordinates)
+        embedded=bool(raster and self.file_source.wcs_path is None and self.file_source.embedded_header is not None)
+        self.coordinates.setVisible(raster and not embedded)
+        if embedded: self.project_hint.setText('Astro-TIFF · sky coordinates and available observation date read from the image.')
+        if raster and not embedded:
             self.coordinates_hint.setText('Sky coordinates needed. Choose a solved FITS of this same image.\nIt must have identical dimensions and framing.' if missing else
                 'Sky coordinates: '+self.file_source.wcs_path.name)
             self.choose_coordinates.setText('Choose solved FITS…' if missing else 'Change solved FITS…')

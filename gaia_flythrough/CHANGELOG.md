@@ -1,5 +1,13 @@
 # Gaia Flythrough releases
 
+## 0.6.2 — 2026-10-15
+
+- Read embedded Astro-TIFF plate solutions directly from TIFF ImageDescription tag 270, including observation date and SIP distortion coefficients. Support short FITS cards and LF/CRLF line endings; use TIFF dimensions when redundant FITS axis cards are absent.
+- Solved Astro-TIFF opens ready for preparation without a separate reference chooser. Plain or unsolved TIFF/PNG retains the explicit coordinate-reference step.
+- Respect TIFF Orientation independently of embedded ROWORDER; reject unsupported rotated orientations. Preserve source files and existing rendering/cache contracts.
+- Add parser/orientation/UI regression tests and validate input loading against local M45, M33, M13 and zenith TIFF files.
+- Corrective input-compatibility patch; extraction schemas and rendering algorithms are unchanged.
+
 ## 0.6.1 — 2026-10-15
 
 - Remove the automatic second file dialog after opening a TIFF/PNG. Keep the photo selected and show an explicit sky-coordinate requirement and Choose solved FITS action in the main Project panel.

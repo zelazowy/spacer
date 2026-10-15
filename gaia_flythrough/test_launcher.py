@@ -169,3 +169,25 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(w.file_source.path,path.resolve())
             self.assertFalse(w.start.isEnabled())
         finally: w.close()
+
+    def test_solved_astro_tiff_needs_no_reference_dialog(self):
+        import numpy as np
+        import tifffile
+        from astropy.wcs import WCS
+        from astropy.io import fits
+        wcs=WCS(naxis=2);wcs.wcs.ctype=['RA---TAN','DEC--TAN']
+        wcs.wcs.crval=[56,24];wcs.wcs.crpix=[8,6];wcs.wcs.cdelt=[-.01,.01]
+        header=wcs.to_header();header.insert(0,('SIMPLE',True));header['DATE-OBS']='2026-10-15'
+        path=self.folder/'astro.tif'
+        tifffile.imwrite(path,np.zeros((12,16,3),dtype=np.float32),photometric='rgb',description=header.tostring(sep='\n',padding=False),metadata=None)
+        w=self.launcher.FlythroughWindow();w.show()
+        try:
+            with patch.object(self.launcher.QFileDialog,'getOpenFileName',return_value=(str(path),'')) as chooser:
+                w.open_image();chooser.assert_called_once()
+            self.assertTrue(w.start.isEnabled());self.assertFalse(w.coordinates.isVisible())
+            self.assertIn('Astro-TIFF',w.project_hint.text())
+            w.executable.setText('/bin/sh');w.ffmpeg.setText('/bin/sh')
+            with patch.object(w,'launch') as launch:
+                w.begin();launch.assert_called_once()
+                self.assertEqual(launch.call_args.args[2].epoch,'2026-10-15')
+        finally: w.close()
