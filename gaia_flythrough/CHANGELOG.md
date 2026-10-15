@@ -1,5 +1,15 @@
 # Gaia Flythrough releases
 
+## 0.7.0 — 2026-10-15
+
+- Accept finished JPEG images, applying EXIF orientation consistently before solving and preparation.
+- Add explicit Solve sky position for unsolved standalone FITS/TIFF/PNG/JPEG input. Keep existing FITS/Astro-TIFF solutions automatic; move the separate-FITS fallback to Advanced settings.
+- Discover ASTAP; expose its executable/database and optional object-name or numeric-position, field-height, search-radius and downsampling hints in Advanced settings. Use the existing Siril ASTAP script as the proxy/CLI reference.
+- Run ASTAP with timeout/cancellation on a temporary same-size monochrome proxy. Validate its solution and merge only astrometry into original RGB pixels; source files and existing projects remain untouched.
+- Save successful WCS, source snapshot, solver provenance/settings and log in a reusable stage=solved project. Permit date/engine setup before first preparation; resume without the source image or ASTAP. Failures keep the image selected for retry.
+- Validate with mocked success/failure/timeout/cancel tests, JPEG orientation and Qt workflow tests, plus an actual installed-ASTAP solve of a processed M13 JPEG. M45/M33 trial copies did not solve; matching remains image-dependent.
+- Minor feature release; extraction schemas, Iterative revision and render behavior are unchanged.
+
 ## 0.6.2 — 2026-10-15
 
 - Read embedded Astro-TIFF plate solutions directly from TIFF ImageDescription tag 270, including observation date and SIP distortion coefficients. Support short FITS cards and LF/CRLF line endings; use TIFF dimensions when redundant FITS axis cards are absent.

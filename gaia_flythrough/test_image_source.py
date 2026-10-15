@@ -96,3 +96,19 @@ class ImageSourceTests(unittest.TestCase):
             source=FileImageSource(path)
             self.assertFalse(source.has_coordinates)
             with self.assertRaisesRegex(ValueError,'no embedded plate solution'): source.snapshot()
+
+    def test_jpeg_exif_orientation_is_used_for_solver_and_photo(self):
+        path=self.folder/'rotated.jpg'
+        raster=np.zeros((12,16,3),dtype=np.uint8);raster[:4,:,0]=200
+        exif=Image.Exif();exif[274]=6
+        Image.fromarray(raster).save(path,exif=exif)
+        before=path.read_bytes();source=FileImageSource(path)
+        self.assertFalse(source.has_coordinates)
+        pixels,header=source.snapshot(allow_unsolved=True)
+        self.assertEqual(pixels.shape,(3,16,12))
+        from PIL import ImageOps
+        with Image.open(path) as image:
+            expected=np.flipud(np.asarray(ImageOps.exif_transpose(image)))/255
+        np.testing.assert_allclose(np.moveaxis(pixels,0,-1),expected,atol=1e-7)
+        self.assertEqual(header['NAXIS1'],12);self.assertEqual(header['NAXIS2'],16)
+        self.assertEqual(path.read_bytes(),before)

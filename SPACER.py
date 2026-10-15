@@ -10,7 +10,7 @@ from version import VERSION
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version',action='version',version=f'SPACER {VERSION}')
-    parser.add_argument('image',nargs='?',help='Already-stretched, solved FITS, or TIFF/PNG with --wcs')
+    parser.add_argument('image',nargs='?',help='Already-stretched FITS, TIFF, PNG or JPEG; solve unsolved input in the app')
     parser.add_argument('--wcs',help='Solved FITS with the same framing as a TIFF/PNG')
     parser.add_argument('--project',help='Open an existing SPACER project')
     args=parser.parse_args()

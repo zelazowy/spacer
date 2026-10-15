@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from astropy.io import fits
 import tifffile
-from PIL import Image
+from PIL import Image, ImageOps
 from siril_pipeline import normalized_pixels, has_solution
 
 FITS_SUFFIXES={'.fits','.fit','.fts'}
@@ -25,7 +25,7 @@ def tiff_header(path):
         try:
             header=fits.Header.fromstring('\n'.join(line.ljust(80) for line in lines),sep='\n')
             header['NAXIS1']=page.imagewidth;header['NAXIS2']=page.imagelength
-            return (header if has_solution(header) else None),orientation
+            return header,orientation
         except (ValueError,TypeError):
             return None,orientation
 
@@ -35,31 +35,31 @@ class FileImageSource:
         self.path=Path(path).expanduser().resolve()
         if not self.path.is_file(): raise ValueError(f'Image does not exist: {self.path}')
         self.is_fits=self.path.suffix.lower() in FITS_SUFFIXES
-        if not self.is_fits and self.path.suffix.lower() not in {'.tif','.tiff','.png'}:
-            raise ValueError('Choose a FITS, TIFF or PNG image.')
-        self.wcs_path=self.path if self.is_fits else (Path(wcs_path).expanduser().resolve() if wcs_path else None)
+        if not self.is_fits and self.path.suffix.lower() not in {'.tif','.tiff','.png','.jpg','.jpeg'}:
+            raise ValueError('Choose a FITS, TIFF, PNG or JPEG image.')
+        self.wcs_path=Path(wcs_path).expanduser().resolve() if wcs_path else None
+        self.native_header=fits.getheader(self.path) if self.is_fits else None
         self.embedded_header=None;self.tiff_orientation=1
         if self.path.suffix.lower() in {'.tif','.tiff'}:
             self.embedded_header,self.tiff_orientation=tiff_header(self.path)
 
     @property
     def has_coordinates(self):
-        return self.wcs_path is not None or self.embedded_header is not None
+        return has_solution(self.header(require_solution=False))
 
-    def header(self):
-        if self.wcs_path is None:
-            if self.embedded_header is not None: return self.embedded_header.copy()
-            raise ValueError('This image has no embedded plate solution. Choose a solved FITS file with identical dimensions and framing.')
-        header=fits.getheader(self.wcs_path)
-        if not has_solution(header):
-            raise ValueError('This file has no valid plate solution. Solve it with your preferred plate solver, then open it again.')
+    def header(self,require_solution=True):
+        header=(fits.getheader(self.wcs_path) if self.wcs_path else
+            (self.native_header if self.native_header is not None else self.embedded_header))
+        header=header.copy() if header is not None else fits.Header()
+        if require_solution and not has_solution(header):
+            raise ValueError('This image has no embedded plate solution. Solve sky position with ASTAP or choose a solved FITS reference.')
         return header
 
-    def snapshot(self):
-        header=self.header()
+    def snapshot(self,allow_unsolved=False):
+        header=self.header(require_solution=not allow_unsolved)
         if self.is_fits:
             pixels=normalized_pixels(fits.getdata(self.path))
-            if 'TOP-DOWN' in str(header.get('ROWORDER','')):
+            if 'TOP-DOWN' in str(self.native_header.get('ROWORDER','')):
                 pixels=np.flip(pixels,axis=-2)
         else:
             if self.path.suffix.lower() in {'.tif','.tiff'}:
@@ -70,7 +70,8 @@ class FileImageSource:
                     raise
             else:
                 with Image.open(self.path) as image:
-                    raster=np.asarray(image).copy()
+                    # Apply JPEG EXIF rotation once, before solving that same pixel frame.
+                    raster=np.asarray(ImageOps.exif_transpose(image)).copy()
             if raster.ndim==2: raster=raster[None,:,:]
             elif raster.ndim==3 and raster.shape[-1] in (1,3): raster=np.moveaxis(raster,-1,0)
             else: raise ValueError('Choose a monochrome or RGB image, without alpha or multiple pages.')
@@ -79,7 +80,7 @@ class FileImageSource:
             # The embedded FITS/WCS cards remain in their original sky frame.
             if self.tiff_orientation in (1,2): pixels=np.flip(pixels,axis=-2)
             if self.tiff_orientation in (2,3): pixels=np.flip(pixels,axis=-1)
-        if (header.get('NAXIS1'),header.get('NAXIS2'))!=(pixels.shape[2],pixels.shape[1]):
+        if self.wcs_path and (header.get('NAXIS1'),header.get('NAXIS2'))!=(pixels.shape[2],pixels.shape[1]):
             raise ValueError('The solved FITS must have exactly the same dimensions and framing as the image.')
-        header=header.copy();header['ROWORDER']='BOTTOM-UP'
+        header=header.copy();header['NAXIS1']=pixels.shape[2];header['NAXIS2']=pixels.shape[1];header['ROWORDER']='BOTTOM-UP'
         return pixels.copy(),header

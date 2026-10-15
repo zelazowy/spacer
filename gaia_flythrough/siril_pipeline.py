@@ -118,6 +118,14 @@ def resume_project(out, options, progress=lambda message:None, cancel=None):
     state=read_project(out)
     if not state or not (out/'source_wcs.fits').exists():
         raise ValueError('This folder is not a SPACER project. Choose a new project folder.')
+    if state.get('stage')=='solved':
+        from astropy.time import Time
+        epoch=getattr(options,'epoch','') or state.get('epoch','')
+        if not epoch: raise ValueError('Enter the observation date in Advanced settings before preparing this project.')
+        Time(epoch)
+        save_project(out,engine=getattr(options,'engine',state['engine']),
+            executable=getattr(options,'executable',state['executable']),epoch=epoch)
+        state=read_project(out)
     options.engine=state['engine']
     options.executable=state['executable']
     options.epoch=state['epoch']
@@ -146,6 +154,10 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
     save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg)
     header=header.copy();header['ROWORDER']='BOTTOM-UP'
     if options.epoch: header['DATE-OBS']=str(options.epoch)
+    if read_project(out).get('stage')=='solved':
+        with fits.open(out/'source_wcs.fits',mode='update') as saved:
+            saved[0].header['DATE-OBS']=str(options.epoch)
+        save_project(out,stage='snapshot')
     if not (out/'source_wcs.fits').exists():
         fits.PrimaryHDU(photo,header).writeto(out/'source_wcs.fits')
     if options.engine=='StarXTerminator':

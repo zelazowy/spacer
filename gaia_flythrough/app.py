@@ -9,6 +9,7 @@ from version import VERSION, field_description
 from siril_pipeline import normalized_pixels, parse_header, has_solution, find_tool, run_pipeline, render_prepared, load_prepared_scene, read_project, resume_project, UNSOLVED_MESSAGE
 from astropy.time import Time
 from image_source import FileImageSource
+from astap_solver import solve_project, find_astap, resolve_astap
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QFormLayout,QHBoxLayout,
@@ -32,7 +33,9 @@ class Worker(QThread):
         self.cancel=threading.Event()
     def run(self):
         try:
-            if getattr(self.options,'reuse',False):
+            if getattr(self.options,'solve',False):
+                out=solve_project(self.options,self.progress.emit,self.cancel)
+            elif getattr(self.options,'reuse',False):
                 out=resume_project(self.options.output,self.options,self.progress.emit,self.cancel)
             else:
                 out=run_pipeline(self.pixels,self.header,self.options,self.progress.emit,self.cancel)
@@ -71,7 +74,8 @@ class FlythroughWindow(QWidget):
         coordinates_layout.addWidget(self.coordinates_hint)
         self.choose_coordinates=QPushButton('Choose solved FITS…')
         self.choose_coordinates.clicked.connect(self.open_coordinates)
-        coordinates_layout.addWidget(self.choose_coordinates,alignment=Qt.AlignmentFlag.AlignLeft)
+        self.solve_button=QPushButton('Solve sky position');self.solve_button.clicked.connect(self.solve_image)
+        coordinates_layout.addWidget(self.solve_button,alignment=Qt.AlignmentFlag.AlignLeft)
         project_layout.addWidget(self.coordinates);self.coordinates.hide()
         layout.addWidget(self.project_group)
 
@@ -101,6 +105,29 @@ class FlythroughWindow(QWidget):
         prep.addRow('Observation date',self.epoch)
         note=QLabel(('Uses a copy of the current Siril pixels.' if siril else 'Uses saved file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.')
         note.setWordWrap(True);prep.addRow(note);advanced_layout.addRow(self.preparation)
+        self.solver_settings=QGroupBox('Plate solving (ASTAP)');solver_form=QFormLayout(self.solver_settings)
+        self.astap=QLineEdit(find_astap());solver_form.addRow('ASTAP executable',self.path_row(self.astap,False))
+        self.database=QLineEdit('/usr/local/opt/astap' if Path('/usr/local/opt/astap').is_dir() else '')
+        self.database.setPlaceholderText('Use ASTAP’s installed database')
+        database_row=QWidget();database_layout=QHBoxLayout(database_row);database_layout.setContentsMargins(0,0,0,0)
+        database_layout.addWidget(self.database);browse_database=QPushButton('Browse…');database_layout.addWidget(browse_database)
+        def choose_database():
+            selected=QFileDialog.getExistingDirectory(self,'Choose ASTAP star database folder')
+            if selected: self.database.setText(selected)
+        browse_database.clicked.connect(choose_database);solver_form.addRow('Star database',database_row)
+        self.target=QLineEdit();self.target.setPlaceholderText('Optional: M45, or RA Dec (hours, degrees)')
+        solver_form.addRow('Approximate target',self.target)
+        self.fov=QDoubleSpinBox();self.fov.setRange(0,180);self.fov.setDecimals(3);self.fov.setSuffix('°');self.fov.setSpecialValueText('Auto')
+        solver_form.addRow('Image height on sky',self.fov)
+        self.radius=QDoubleSpinBox();self.radius.setRange(.1,180);self.radius.setValue(180);self.radius.setSuffix('°')
+        solver_form.addRow('Search radius',self.radius)
+        self.binning=QSpinBox();self.binning.setRange(0,8);self.binning.setSpecialValueText('Auto')
+        solver_form.addRow('Downsampling',self.binning)
+        solver_note=QLabel('An installed ASTAP star database is required. Auto field height searches about 0.3–10°.\nObject-name lookup uses internet; blind solving and numeric coordinates work offline.')
+        solver_note.setWordWrap(True);solver_form.addRow(solver_note)
+        solver_form.addRow('Existing solution',self.choose_coordinates)
+        if not siril: advanced_layout.addRow(self.solver_settings)
+        else: self.solver_settings.hide()
         self.ffmpeg=QLineEdit(find_tool('ffmpeg'));advanced_layout.addRow('FFmpeg',self.path_row(self.ffmpeg,False))
         name=self.image_filename() or 'image'
         self.output=QLineEdit(str(Path(name).expanduser().resolve().parent/'flythrough'/Path(name).stem))
@@ -138,7 +165,7 @@ class FlythroughWindow(QWidget):
         return str(self.file_source.path) if self.file_source else None
 
     def open_image(self):
-        selected,_=QFileDialog.getOpenFileName(self,'Open a finished image',filter='Images (*.fits *.fit *.fts *.tif *.tiff *.png)')
+        selected,_=QFileDialog.getOpenFileName(self,'Open a finished image',filter='Images (*.fits *.fit *.fts *.tif *.tiff *.png *.jpg *.jpeg)')
         if not selected: return
         try: self.use_image(selected)
         except Exception as exc: self.show_problem('Cannot open image',str(exc))
@@ -163,6 +190,22 @@ class FlythroughWindow(QWidget):
         self.output.setText(str(source.path.parent/'flythrough'/source.path.stem))
         self.refresh_project()
         if Path(self.output.text()).exists(): self.use_prepared(Path(self.output.text()))
+
+    def solve_image(self):
+        try:
+            if not self.file_source: raise ValueError('Open an image first.')
+            resolve_astap(self.astap.text())
+            if not self.output.text().strip(): raise ValueError('Choose a new project folder.')
+            date=self.epoch.text().strip() or self.file_source.header(require_solution=False).get('DATE-OBS','')
+            if date: Time(date)
+            options=SimpleNamespace(solve=True,output=self.output.text(),source=str(self.file_source.path),
+                wcs_path=str(self.file_source.wcs_path) if self.file_source.wcs_path else None,
+                astap=self.astap.text(),database=self.database.text().strip(),target=self.target.text().strip(),
+                fov=self.fov.value(),radius=self.radius.value(),binning=self.binning.value(),epoch=str(date),
+                seconds=self.seconds.value(),zoom=self.zoom_percent(),ffmpeg=self.ffmpeg.text(),
+                engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',executable=self.executable.text())
+            self.launch(None,None,options)
+        except Exception as exc: self.show_problem('Cannot solve sky position',str(exc))
 
     def disclosure(self,layout,title,content):
         toggle=QToolButton();toggle.setText(title);toggle.setCheckable(True)
@@ -203,22 +246,23 @@ class FlythroughWindow(QWidget):
             ('File image · uses already-stretched pixels.' if self.file_source else 'Open a finished image, or return to a saved project.'))
         self.project_hint.setText(('Saved image · ready to render; analysis is reused.' if ready else 'Saved image · missing preparation steps will resume.') if saved else new_hint)
         self.project_hint.setToolTip(str(folder))
-        self.preparation.setEnabled(not saved)
+        self.preparation.setEnabled(not saved or read_project(folder).get('stage')=='solved')
         self.start.setText(('Render flight' if ready else 'Resume and render') if saved else 'Prepare and render')
         if folder!=self.prepared:
             self.result=None;self.result_stem=None
             self.preview.setEnabled(False);self.video.setEnabled(False)
         self.status.setText('Ready to render from the saved project.' if saved else ('Ready to prepare this image.' if self.siril or self.file_source else 'Open an image or project to begin.'))
-        raster=bool(not self.siril and self.file_source and not self.file_source.is_fits and not saved)
-        missing=bool(raster and not self.file_source.has_coordinates)
-        embedded=bool(raster and self.file_source.wcs_path is None and self.file_source.embedded_header is not None)
-        self.coordinates.setVisible(raster and not embedded)
-        if embedded: self.project_hint.setText('Astro-TIFF · sky coordinates and available observation date read from the image.')
-        if raster and not embedded:
-            self.coordinates_hint.setText('Sky coordinates needed. Choose a solved FITS of this same image.\nIt must have identical dimensions and framing.' if missing else
-                'Sky coordinates: '+self.file_source.wcs_path.name)
-            self.choose_coordinates.setText('Choose solved FITS…' if missing else 'Change solved FITS…')
-        if missing: self.status.setText('Choose sky coordinates above to continue. The output folder is set automatically.')
+        file_selected=bool(not self.siril and self.file_source and not saved)
+        missing=bool(file_selected and not self.file_source.has_coordinates)
+        embedded=bool(file_selected and self.file_source.has_coordinates and self.file_source.wcs_path is None)
+        self.coordinates.setVisible(missing)
+        self.solve_button.setEnabled(missing)
+        if embedded:
+            kind='FITS' if self.file_source.is_fits else 'Astro-TIFF'
+            self.project_hint.setText(kind+' · sky coordinates and available observation date read from the image.')
+        if missing:
+            self.coordinates_hint.setText('Sky position is not saved in this image.\nSolve it with ASTAP to prepare your flight.')
+            self.status.setText('Solve sky position above. ASTAP settings are under Advanced settings.')
         self.start.setEnabled((saved or bool(self.siril or self.file_source)) and not missing)
 
     def new_from_siril(self):
@@ -308,7 +352,7 @@ class FlythroughWindow(QWidget):
             self.prepared=Path(options.output).expanduser().resolve()
             self.result=None;self.preview.setEnabled(False);self.video.setEnabled(False)
             self.start.setEnabled(False);self.advanced_toggle.setEnabled(False);self.cancel_button.setEnabled(True);self.cancel_button.show()
-            self.advanced_dialog.close();self.start.setText('Processing…')
+            self.advanced_dialog.close();self.start.setText('Solving…' if getattr(options,'solve',False) else 'Processing…')
             self.progress_bar.show();self.status.setText('Starting…')
             self.load_scene.setEnabled(False)
             for control in self.settings: control.setEnabled(False)
@@ -327,8 +371,16 @@ class FlythroughWindow(QWidget):
                 raise ValueError('Create a flight or load a prepared field first.')
             if not Path(self.ffmpeg.text()).is_file() or not os.access(self.ffmpeg.text(),os.X_OK):
                 raise ValueError('Choose the FFmpeg executable in Advanced settings.')
+            if read_project(self.prepared).get('stage')=='solved':
+                if not Path(self.executable.text()).is_file() or not os.access(self.executable.text(),os.X_OK):
+                    raise ValueError('Choose the star-removal executable in Advanced settings before preparing the project.')
+                date=self.epoch.text().strip() or read_project(self.prepared).get('epoch','')
+                if not date: raise ValueError('Enter the observation date in Advanced settings before preparing the project.')
+                Time(date)
             options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),mode="iterative",
-                output=str(self.prepared),ffmpeg=self.ffmpeg.text(),reuse=True)
+                output=str(self.prepared),ffmpeg=self.ffmpeg.text(),reuse=True,
+                engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
+                executable=self.executable.text(),epoch=self.epoch.text().strip())
             self.launch(None,None,options)
         except Exception as exc: self.show_problem('Cannot render flight',str(exc))
     def load_prepared(self):
@@ -351,6 +403,13 @@ class FlythroughWindow(QWidget):
             self.seconds.setValue(state.get('seconds',60))
             self.zoom.setValue(1+state.get('zoom',30)/100)
             if state.get('ffmpeg'): self.ffmpeg.setText(state['ffmpeg'])
+            if state.get('stage')=='solved':
+                self.engine.setCurrentIndex(0 if state.get('engine')=='StarXTerminator' else 1)
+                self.executable.setText(state.get('executable',''))
+                self.epoch.setText(state.get('epoch',''))
+            solver=state.get('astrometry',{})
+            if solver.get('executable'): self.astap.setText(solver['executable'])
+            if solver.get('database'): self.database.setText(solver['database'])
         self.result_stem=state.get('last_render')
         self.result=folder if self.result_stem else None
         self.preview.setEnabled(bool(self.result and (folder/(self.result_stem+'.html')).exists()))
@@ -363,6 +422,10 @@ class FlythroughWindow(QWidget):
             self.worker.cancel.set();self.cancel_button.setEnabled(False)
             self.report_progress('Cancelling… Waiting for the current step to stop. A Gaia query may take up to five minutes.')
     def completed(self,path):
+        if getattr(self.worker.options,'solve',False):
+            self.use_prepared(Path(path))
+            self.report_progress('Sky position solved. Set the observation date in Advanced settings if needed, then prepare your flight.')
+            return
         self.result=Path(path);self.result_stem=self.worker.options.result_stem
         self.report_progress('Flight ready. Open the preview or video.');self.log.appendPlainText(str(self.result/(self.result_stem+'.mp4')))
         self.preview.setEnabled(True);self.video.setEnabled(True)

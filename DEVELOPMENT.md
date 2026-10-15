@@ -1,21 +1,22 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.7.0 adds JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
-- SPACER.py: standalone desktop entry point; opens FITS, TIFF/PNG plus WCS, or an existing project.
+- SPACER.py: standalone desktop entry point; opens FITS, TIFF, PNG, JPEG or an existing project.
 - gaia_flythrough/app.py: shared Qt interface and worker; no Siril import.
+- gaia_flythrough/astap_solver.py: cancellable ASTAP worker operation using a same-size mono proxy; only WCS is merged into the original colour snapshot.
 - gaia_flythrough/image_source.py: disk input validation, embedded Astro-TIFF FITS-header parsing and channel/row normalization.
-- Siril_Gaia_Flythrough.py: thin Siril launcher; snapshots current pixels and WCS without modifying the source. Requires an existing plate solution; suggests Siril/ASTAP when absent. Automatic solving was deliberately excluded.
+- Siril_Gaia_Flythrough.py: thin Siril launcher; snapshots current pixels and WCS without modifying the source. Requires an existing plate solution; suggests Siril/ASTAP when absent. Siril integration still expects a solved image; the standalone app now offers explicit ASTAP solving.
 - gaia_flythrough/siril_pipeline.py: export, external removal engines, cached fields and non-overwriting render variants.
 - gaia_flythrough/flythrough.py: catalogue matching, compact-star extraction, subpixel rendering and prototype CLI.
 - gaia_flythrough/iterative_deblend.py: alternating bright-star halo/spike and neighbouring-core fits.
 - gaia_flythrough/viewer.html: self-contained interactive preview.
 - gaia_flythrough/version.py: shared version and provenance.
 
-The standalone GUI is implemented. File input uses already-stretched pixels and an existing plate solution; Siril linked autostretch remains exclusive to the Siril image source. The prototype rendering CLI still takes separate photo, starless and WCS inputs. A unified headless CLI, bundled installers and website remain future directions.
+The standalone GUI is implemented. File input uses already-stretched pixels and an existing or explicitly requested ASTAP plate solution; Siril linked autostretch remains exclusive to the Siril image source. The prototype rendering CLI still takes separate photo, starless and WCS inputs. A unified headless CLI, bundled installers and website remain future directions.
 
 ## Preserve these decisions
 
@@ -36,6 +37,14 @@ Astro-TIFF uses ImageDescription tag 270, short FITS cards and LF/CRLF endings. 
 
 Standalone launches must not import `sirilpy` or require Siril. Keep image loading at the source boundary and share the same project/render pipeline between entry points. Treat TIFF/PNG WCS references as user-supplied framing assertions; validate dimensions, do not claim that dimensions verify registration.
 
+## Optional plate solving
+
+Only offer Solve sky position for standalone images without a usable solution. Reuse native FITS/Astro-TIFF WCS. JPEG pixels are EXIF-transposed before solving/preparation so both use the same frame. Solving runs in the shared worker with timeout/cancellation; never pass the original file to ASTAP with `-update`.
+
+The proxy is same-size mono scaled to 0–65535, following the local Siril_ASTAP_PlateSolve reference. Validate ASTAP's return code, PLTSOLVD flag, dimensions, celestial WCS, scale and finite corner coordinates. Remove old astrometry before merging WCS/SIP; preserve original colour pixels, geometry and date. Commit `source_wcs.fits` and a stage=`solved` project only after success. Solve failure leaves the selected image and no new project directory. A solved project resumes without ASTAP/source access; require a real observation date and permit engine selection until first preparation. Do not redo existing preparation after settings changes.
+
+Real validation: installed ASTAP/D20 solved a downsampled finished M13 JPEG with position/field-height hints in approximately 0.5 s solver time. Center agreed with the original WCS to 0.8 arcsec; corners differed by 38–44 arcsec (ASTAP reported insufficient quads for SIP). The processed M45/M33 copies did not solve. This checks integration and orientation, not universal solvability or physical accuracy. Astrometry retains solver settings, SPACER version/time and the raw solver log.
+
 ## Interface conventions
 
 Keep project choice, duration, direct final zoom scale and one state-specific primary action in the main window. Advanced preparation/tool paths live in a scrollable dialog; diagnostics use a separate Details disclosure. Use native palette and widgets, meaningful text, keyboard focus and visible progress. Surface required setup when validation fails. Disable settings and project switching during worker execution. Test new, partial, prepared, busy and failed states after changing the interface.
@@ -44,7 +53,7 @@ Keep project choice, duration, direct final zoom scale and one state-specific pr
 
 Gaia DR3 positions are propagated to the observation epoch. Bailer-Jones geometric distance estimates and bounds are used. RUWE and uncertainty screens do not guarantee accurate distances or correct separation of photographed light. Nebulosity is flat; brightness/PSF presentation is not physical light transport.
 
-StarXTerminator, StarNet and FFmpeg are external. Do not bundle proprietary models, binaries or licenses. Images are processed locally; field coordinates are queried through GAVO.
+ASTAP and its star database, StarXTerminator, StarNet and FFmpeg are external. Do not bundle proprietary models, binaries or licenses. Images are processed locally; field coordinates are queried through GAVO.
 
 ## Validation
 

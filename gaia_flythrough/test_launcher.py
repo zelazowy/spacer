@@ -163,7 +163,7 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(w.file_source.path,path.resolve())
             self.assertTrue(w.coordinates.isVisible())
             self.assertFalse(w.start.isEnabled())
-            self.assertIn('Sky coordinates needed',w.coordinates_hint.text())
+            self.assertIn('Solve it with ASTAP',w.coordinates_hint.text())
             with patch.object(self.launcher.QFileDialog,'getOpenFileName',return_value=('','')):
                 w.open_coordinates()
             self.assertEqual(w.file_source.path,path.resolve())
@@ -190,4 +190,28 @@ class LauncherTests(unittest.TestCase):
             with patch.object(w,'launch') as launch:
                 w.begin();launch.assert_called_once()
                 self.assertEqual(launch.call_args.args[2].epoch,'2026-10-15')
+        finally: w.close()
+
+    def test_unsolved_fits_can_start_optional_solver(self):
+        import numpy as np
+        from astropy.io import fits
+        path=self.folder/'unsolved.fits';fits.PrimaryHDU(np.arange(192,dtype=np.float32).reshape(12,16)/192).writeto(path)
+        w=self.launcher.FlythroughWindow();w.show()
+        try:
+            w.use_image(path)
+            self.assertTrue(w.coordinates.isVisible());self.assertTrue(w.solve_button.isEnabled())
+            self.assertFalse(w.start.isEnabled())
+            w.astap.setText('/bin/sh')
+            with patch.object(w,'launch') as launch:
+                w.solve_image();launch.assert_called_once()
+                options=launch.call_args.args[2]
+                self.assertTrue(options.solve);self.assertEqual(options.source,str(path.resolve()))
+                self.assertEqual(options.fov,0);self.assertEqual(options.radius,180)
+            project=self.folder/'solved';project.mkdir()
+            fits.PrimaryHDU(np.zeros((3,12,16))).writeto(project/'source_wcs.fits')
+            (project/'project.json').write_text(json.dumps(dict(stage='solved',engine='StarNet',executable='/saved/engine',epoch='')))
+            w.use_prepared(project)
+            self.assertTrue(w.preparation.isEnabled())
+            self.assertEqual(w.engine.currentIndex(),1)
+            self.assertTrue(w.start.isEnabled());self.assertFalse(w.coordinates.isVisible())
         finally: w.close()
