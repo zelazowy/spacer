@@ -1,0 +1,247 @@
+"""Experimental alternating halo/spike and neighbour-core decomposition.
+
+Models overlapping light additively. No Voronoi cut-outs are transported.
+The bright-star position and each neighbour's depth remain catalogue anchored.
+"""
+import numpy as np
+import json
+import csv
+import io
+from version import VERSION, created_stamp
+import base64
+from pathlib import Path
+from PIL import Image
+from astropy.io import fits
+from astropy.wcs import WCS
+from astropy.coordinates import SkyCoord
+from astropy.time import Time
+import astropy.units as u
+from scipy import ndimage
+from scipy.optimize import nnls
+from scipy.spatial import cKDTree
+
+
+def measured_spikes(data,halo,center,angle,excluded,max_radius):
+    """Empirical, colour-dependent spike strips with neighbour cores masked.
+
+    Interpolate through protected cores along each arm before smoothing. This
+    preserves extended chromatic structure without cutting out star sectors.
+    """
+    yy,xx=np.mgrid[:data.shape[0],:data.shape[1]]
+    dx,dy=xx-center[0],yy-center[1]
+    longitudinal=np.arange(-max_radius,max_radius+1,dtype=float)
+    cross=np.arange(-12,13,dtype=float)
+    along_grid,cross_grid=np.meshgrid(longitudinal,cross,indexing='ij')
+    signal=np.maximum(data-halo,0)
+    result=np.zeros_like(data,dtype=float)
+    for a in (angle,angle+np.pi/2):
+        sx=center[0]+along_grid*np.cos(a)-cross_grid*np.sin(a)
+        sy=center[1]+along_grid*np.sin(a)+cross_grid*np.cos(a)
+        coordinates=[sy,sx]
+        protected=ndimage.map_coordinates(excluded.astype(float),coordinates,order=0,mode='constant',cval=1)>.5
+        strip=np.stack([ndimage.map_coordinates(signal[:,:,c],coordinates,order=1,mode='constant') for c in range(3)],axis=-1)
+        for j in range(len(cross)):
+            good=~protected[:,j]
+            for c in range(3):
+                if good.sum()<2: strip[:,j,c]=0
+                else: strip[:,j,c]=np.interp(longitudinal,longitudinal[good],strip[good,j,c],left=0,right=0)
+        # Remove diffuse offsets beside the spike, not its coloured structure.
+        baseline=np.median(strip[:,np.abs(cross)>=10,:],axis=1)
+        strip=np.maximum(strip-baseline[:,None,:],0)
+        strip=ndimage.median_filter(strip,size=(3,1,1))
+        strip=ndimage.gaussian_filter(strip,sigma=(.4,.35,0))
+        along=dx*np.cos(a)+dy*np.sin(a)
+        across=-dx*np.sin(a)+dy*np.cos(a)
+        taper=np.clip((12-np.abs(across))/3,0,1)
+        for c in range(3):
+            result[:,:,c]+=ndimage.map_coordinates(strip[:,:,c],[along+max_radius,across+12],order=1,mode='constant')*taper
+    return result
+
+
+def bright_psf(data,center,exclude):
+    h,w=data.shape[:2]
+    yy,xx=np.mgrid[:h,:w];dx=xx-center[0];dy=yy-center[1]
+    radius=np.hypot(dx,dy);bins=radius.astype(int)
+    max_radius=int(min(center[0],center[1],w-1-center[0],h-1-center[1]))
+    valid=(radius<max_radius)&~exclude
+    radial=[]
+    for channel in range(3):
+        values=data[:,:,channel]
+        profile=np.array([np.percentile(values[(bins==i)&valid],35)
+            if np.any((bins==i)&valid) else np.nan for i in range(max_radius+1)])
+        finite=np.isfinite(profile)
+        profile=np.interp(np.arange(len(profile)),np.flatnonzero(finite),profile[finite])
+        floor=np.median(profile[-max(3,max_radius//10):])
+        profile=np.maximum(ndimage.gaussian_filter1d(profile,.8)-floor,0)
+        profile=np.minimum.accumulate(profile)
+        radial.append(np.interp(radius,np.arange(len(profile)),profile,right=0))
+    halo=np.stack(radial,axis=-1)
+    light=np.maximum(data-halo,0).mean(axis=2)
+    rs=np.linspace(12,max_radius*.85,90)
+    scores=[]
+    angles=np.linspace(0,np.pi/2,180,endpoint=False)
+    for angle in angles:
+        rays=[]
+        for j in range(4):
+            a=angle+j*np.pi/2
+            rays.append(ndimage.map_coordinates(light,[center[1]+rs*np.sin(a),center[0]+rs*np.cos(a)],order=1))
+        scores.append(np.median(rays,axis=0).mean())
+    angle=angles[int(np.argmax(scores))]
+    basis=[]
+    for a in (angle,angle+np.pi/2):
+        along=dx*np.cos(a)+dy*np.sin(a)
+        cross=-dx*np.sin(a)+dy*np.cos(a)
+        for width in (1.,2.5):
+            for length in (12.,35.,90.):
+                basis.append(np.exp(-cross**2/(2*width**2))/(1+(along/length)**2))
+    design=np.stack(basis,axis=-1).reshape(-1,len(basis))
+    use=valid.ravel()&(radius.ravel()>3)
+    target=(data-halo).reshape(-1,3)
+    coefficients=[]
+    for c in range(3):
+        weights=np.ones(use.sum())
+        for _ in range(3):
+            coef=nnls(design[use]*weights[:,None],target[use,c]*weights)[0]
+            error=design[use]@coef-target[use,c]
+            weights=np.sqrt(1/np.maximum(1,np.abs(error)/.01))
+        coefficients.append(coef)
+    spikes=(design@np.stack(coefficients,axis=1)).reshape(h,w,3)
+    empirical=measured_spikes(data,halo,center,angle,exclude,max_radius)
+    blend=np.clip((radius-2)/4,0,1)
+    blend=blend*blend*(3-2*blend)
+    spikes=spikes*(1-blend[...,None])+empirical*blend[...,None]
+    taper=np.clip((max_radius-radius)/(max_radius*.15),0,1)
+    return np.maximum(halo+spikes,0)*taper[...,None],float(np.degrees(angle))
+
+
+def deblend_group(data,primary,neighbours,fit_core,iterations=8,cancel=None):
+    """Return per-source positive models, reconstruction and iteration metrics.
+
+Neighbour positions are (x,y) in tile coordinates. Unmatched or uncertain
+neighbours must also be supplied; their fitted light stays stationary later.
+"""
+    yy,xx=np.mgrid[:data.shape[0],:data.shape[1]]
+    excluded=np.zeros(data.shape[:2],dtype=bool)
+    for x,y in neighbours:
+        excluded|=(xx-x)**2+(yy-y)**2<25
+    tree=cKDTree([primary,*neighbours])
+    cores=[np.zeros_like(data) for _ in neighbours]
+    history=[];previous=None
+    for iteration in range(iterations):
+        if cancel is not None and cancel.is_set(): raise InterruptedError('Iterative separation cancelled.')
+        core_sum=sum(cores,np.zeros_like(data))
+        main,angle=bright_psf(np.maximum(data-core_sum,0),primary,excluded)
+        for index,(x,y) in enumerate(neighbours):
+            remainder=np.maximum(data-main-(core_sum-cores[index]),0)
+            fitted=fit_core(remainder,x,y,tree)
+            new=np.zeros_like(data)
+            if fitted is not None:
+                sy,sx,patch,_=fitted;new[sy,sx]=patch
+            core_sum+=new-cores[index];cores[index]=new
+        total=main+core_sum
+        change=1. if previous is None else float(np.abs(total-previous).sum()/max(previous.sum(),1e-9))
+        history.append(dict(iteration=iteration+1,relative_model_change=change,
+            mean_absolute_residual=float(np.abs(data-total).mean()),spike_angle_deg=angle))
+        if previous is not None and change<.001: break
+        previous=total.copy()
+    # Smooth model responsibilities preserve the starting photo exactly and
+    # cannot subtract more light than actually exists at a given pixel/channel.
+    factor=data/np.maximum(np.maximum(total,data),1e-12)
+    layers=[main*factor,*[core*factor for core in cores]]
+    background=data-sum(layers,np.zeros_like(data))
+    return layers,background,history
+
+
+def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None):
+    """Refine isolated catalogue-anchored bright groups in a Natural field.
+
+    Close bright-bright overlaps and poorly fitted groups are deferred. All
+    catalogue neighbours participate in light separation, even if their depth
+    is too uncertain to animate. Natural and Dynamic caches stay untouched.
+    """
+    from flythrough import read_image,fit_compact_sprite,png_data,number
+    folder=Path(folder)
+    photo=read_image(folder/'photo.png');starless=read_image(folder/'starless.png')
+    residual=np.maximum(photo-starless,0)
+    h,w=photo.shape[:2]
+    header=fits.getheader(folder/'source_wcs.fits');wcs=WCS(header,naxis=2).celestial
+    with (folder/'catalog.csv').open() as file: rows=list(csv.DictReader(file))
+    sky=SkyCoord(ra=[number(r,'ra') for r in rows]*u.deg,dec=[number(r,'dec') for r in rows]*u.deg,
+        pm_ra_cosdec=np.nan_to_num([number(r,'pmra') for r in rows])*u.mas/u.yr,
+        pm_dec=np.nan_to_num([number(r,'pmdec') for r in rows])*u.mas/u.yr,obstime=Time(2016.,format='jyear'))
+    epoch=header.get('DATE-OBS')
+    if not epoch:
+        raise ValueError('Iterative refinement needs DATE-OBS in the saved snapshot. Create a new prepared field with the observation date.')
+    sky=sky.apply_space_motion(new_obstime=Time(epoch))
+    gx,gy=wcs.world_to_pixel(sky);gy=h-1-gy
+    def reliable(i):
+        d,lo,hi,ruwe=[number(rows[i],key) for key in ('r_med_geo','r_lo_geo','r_hi_geo','ruwe')]
+        return 0<lo<=d<=hi and (hi-lo)/(2*d)<=.2 and ruwe<=1.4
+    candidates=[];core_flux={}
+    for i,(x,y) in enumerate(zip(gx,gy)):
+        if not np.isfinite([x,y]).all() or not (170<x<w-170 and 170<y<h-170): continue
+        if not reliable(i) or number(rows[i],'phot_g_mean_mag')>11: continue
+        if residual[int(y)-3:int(y)+4,int(x)-3:int(x)+4].max()<.35: continue
+        flux=float(residual[int(y)-8:int(y)+9,int(x)-8:int(x)+9].max(axis=2).sum())
+        if flux<40: continue
+        core_flux[i]=flux
+        candidates.append(i)
+    # Broad bright stars get priority; compact field stars must not reserve
+    # analysis tiles before the halos this pass is intended to recover.
+    candidates.sort(key=lambda index:core_flux[index],reverse=True)
+    background=np.asarray(Image.open(io.BytesIO(base64.b64decode(scene['background'].split(',')[1]))),dtype=float)/255
+    stars=list(scene['stars']);report=[];accepted_centers=[]
+    optical_center=wcs.pixel_to_world((w-1)/2,(h-1)/2)
+    for step,primary_index in enumerate(candidates):
+        if cancel is not None and cancel.is_set(): raise InterruptedError('Iterative separation cancelled.')
+        x,y=float(gx[primary_index]),float(gy[primary_index]);radius=160
+        source_id=rows[primary_index]['source_id']
+        progress(f'Iterative group {step+1}/{len(candidates)}: Gaia {source_id}')
+        separation=np.hypot(gx-x,gy-y)
+        if np.any((separation<5)&(np.arange(len(rows))!=primary_index)):
+            report.append(dict(source_id=source_id,status='deferred_unresolved_catalogue_companion'));continue
+        if any(j!=primary_index and np.hypot(gx[j]-x,gy[j]-y)<radius for j in candidates):
+            report.append(dict(source_id=source_id,status='deferred_bright_bright_overlap'));continue
+        if any(np.hypot(px-x,py-y)<2*radius+20 for px,py in accepted_centers):
+            report.append(dict(source_id=source_id,status='deferred_overlapping_analysis_tiles'));continue
+        left,top=int(x)-radius,int(y)-radius
+        sy=slice(top,top+2*radius+1);sx=slice(left,left+2*radius+1)
+        yy,xx=np.mgrid[sy,sx]
+        weights=residual[sy,sx].max(axis=2)*np.exp(-((xx-x)**2+(yy-y)**2)/8)
+        x=float((xx*weights).sum()/weights.sum());y=float((yy*weights).sum()/weights.sum())
+        indices=[i for i in range(len(rows)) if i!=primary_index
+            and left+10<gx[i]<left+2*radius-10 and top+10<gy[i]<top+2*radius-10
+            and np.hypot(gx[i]-x,gy[i]-y)>5]
+        positions=[(float(gx[i]-left),float(gy[i]-top)) for i in indices]
+        layers,_,history=deblend_group(residual[sy,sx].astype(np.float32),(x-left,y-top),
+            positions,fit_compact_sprite,iterations=20,cancel=cancel)
+        converged=len(history)>1 and history[-1]['relative_model_change']<.001
+        if not converged or history[-1]['mean_absolute_residual']>.015:
+            report.append(dict(source_id=source_id,status='deferred_fit_not_converged',history=history));continue
+        ids={rows[i]['source_id'] for i in [primary_index,*indices]}
+        retained=[]
+        for star in stars:
+            if star.get('source_id') not in ids:
+                retained.append(star);continue
+            patch=np.asarray(Image.open(io.BytesIO(base64.b64decode(star['image'].split(',')[1]))),dtype=float)/255
+            x0=round(star['x']-star['ax']);y0=round(star['y']-star['ay'])
+            background[y0:y0+star['h'],x0:x0+star['w']]+=patch
+        recovered=[]
+        for index,layer in zip([primary_index,*indices],layers):
+            if not reliable(index) or layer.max()<.01: continue
+            layer=np.minimum(layer,np.maximum(background[sy,sx]-starless[sy,sx],0))
+            background[sy,sx]-=layer
+            px,py=(x,y) if index==primary_index else (float(gx[index]),float(gy[index]))
+            d,lo,hi=[number(rows[index],key) for key in ('r_med_geo','r_lo_geo','r_hi_geo')]
+            depth=d*np.cos(optical_center.separation(wcs.pixel_to_world(px,h-1-py)).rad)
+            retained.append(dict(x=px,y=py,depth=float(depth),ax=px-left,ay=py-top,
+                w=layer.shape[1],h=layer.shape[0],image=png_data(layer),source_id=rows[index]['source_id'],
+                distance_pc=d,lower_pc=lo,upper_pc=hi,iterative_group=source_id))
+            recovered.append(rows[index]['source_id'])
+        stars=retained;accepted_centers.append((x,y))
+        report.append(dict(source_id=source_id,status='accepted',history=history,
+            analysed_catalogue_sources=len(indices)+1,recovered_sources=recovered))
+    result=dict(scene,stars=stars,background=png_data(background),extraction_version=6,iterative_revision=2,prepared_with_version=VERSION,prepared_at=created_stamp(),mode='iterative',
+        label='Experimental iterative halo/spike separation; uncertain bright groups remain stationary')
+    (folder/'iterative_report.json').write_text(json.dumps(report,indent=2))
+    return result,background

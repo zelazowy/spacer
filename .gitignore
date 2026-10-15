@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+venv/
+flythrough/
+outputs/
+*.mp4
+*.fits
+*.fit
+*.tif
+*.tiff
