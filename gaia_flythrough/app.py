@@ -354,7 +354,7 @@ class FlythroughWindow(QWidget):
         self.solver_settings.setVisible(missing)
         self.solve_button.setEnabled(missing)
         if embedded:
-            kind='FITS' if self.file_source.is_fits else 'Astro-TIFF'
+            kind='FITS' if self.file_source.is_fits else ('JPEG EXIF' if self.file_source.path.suffix.lower() in {'.jpg','.jpeg'} else 'Astro-TIFF')
             self.project_hint.setText(kind+' · sky coordinates and available observation date read from the image.')
         if missing:
             self.coordinates_hint.setText('Sky position is not saved in this image.\nSolve it with ASTAP to prepare your flight.')

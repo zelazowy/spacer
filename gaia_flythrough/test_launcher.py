@@ -326,3 +326,21 @@ class LauncherTests(unittest.TestCase):
         worker.options.verbose=True
         with redirect_stdout(io.StringIO()) as output: worker.report(Diagnostic('many quads'))
         self.assertIn('many quads',output.getvalue())
+
+    def test_solved_jpeg_hides_all_solver_controls_without_starting_astap(self):
+        from astropy.io import fits
+        from astropy.wcs import WCS
+        from PIL import Image
+        wcs=WCS(naxis=2);wcs.wcs.ctype=['RA---TAN','DEC--TAN']
+        wcs.wcs.crval=[299.9,22.7];wcs.wcs.crpix=[8,6];wcs.wcs.cdelt=[-.001,.001]
+        h=wcs.to_header();h.insert(0,('SIMPLE',True));h['NAXIS1']=16;h['NAXIS2']=12;h['DATE-OBS']='2026-07-17'
+        exif=Image.Exif();exif[270]=h.tostring(sep='\n',padding=False)
+        path=self.folder/'m27.jpg';Image.new('RGB',(16,12)).save(path,exif=exif)
+        w=self.launcher.FlythroughWindow();w.show()
+        try:
+            with patch.object(self.launcher,'solve_project') as solver:
+                w.use_image(path);self.app.processEvents();solver.assert_not_called()
+            self.assertTrue(w.start.isEnabled());self.assertFalse(w.coordinates.isVisible())
+            self.assertFalse(w.target.isVisible());self.assertTrue(w.solver_settings.isHidden())
+            self.assertIn('JPEG EXIF',w.project_hint.text());self.assertEqual(w.epoch.text(),'2026-07-17')
+        finally: w.close()

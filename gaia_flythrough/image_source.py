@@ -2,12 +2,38 @@
 from pathlib import Path
 import numpy as np
 from astropy.io import fits
+from astropy.wcs import WCS
 import tifffile
 from PIL import Image, ImageOps
 from siril_pipeline import normalized_pixels, has_solution
 from photo_date import infer_photo_date
 
 FITS_SUFFIXES={'.fits','.fit','.fts'}
+
+
+def description_header(description):
+    """FITS cards saved by Siril in an image's description (TIFF or JPEG EXIF)."""
+    if isinstance(description,bytes): description=description.decode('ascii',errors='replace')
+    if not isinstance(description,str): return None
+    description=description.rstrip('\x00').strip()
+    lines=description.splitlines()
+    if not description.startswith('SIMPLE') or not lines or lines[-1].strip()!='END': return None
+    try: return fits.Header.fromstring('\n'.join(line.ljust(80) for line in lines),sep='\n')
+    except (ValueError,TypeError): return None
+
+
+def jpeg_header(path):
+    """Reuse embedded WCS only when its dimensions and orientation still match."""
+    with Image.open(path) as image:
+        exif=image.getexif();header=description_header(exif.get(270))
+        if header is None or exif.get(274,1)!=1: return None
+        if (header.get('NAXIS1'),header.get('NAXIS2'))!=image.size: return None
+        if has_solution(header):
+            wcs=WCS(header,naxis=2)
+            scale=wcs.pixel_scale_matrix
+            if not np.isfinite(scale).all() or abs(np.linalg.det(scale))<1e-15: return None
+            if not np.isfinite(wcs.all_pix2world([[0,0],[image.width-1,image.height-1]],0)).all(): return None
+        return header
 
 
 def tiff_header(path):
@@ -20,15 +46,10 @@ def tiff_header(path):
         orientation=int(page.tags['Orientation'].value) if 'Orientation' in page.tags else 1
         if orientation not in (1,2,3,4):
             raise ValueError('Rotated TIFF orientation is unsupported. Export a top-left oriented image.')
-        if not description.startswith('SIMPLE'): return None,orientation
-        lines=description.splitlines()
-        if not lines or lines[-1].strip()!='END': return None,orientation
-        try:
-            header=fits.Header.fromstring('\n'.join(line.ljust(80) for line in lines),sep='\n')
+        header=description_header(description)
+        if header is not None:
             header['NAXIS1']=page.imagewidth;header['NAXIS2']=page.imagelength
-            return header,orientation
-        except (ValueError,TypeError):
-            return None,orientation
+        return header,orientation
 
 
 class FileImageSource:
@@ -43,6 +64,8 @@ class FileImageSource:
         self.embedded_header=None;self.tiff_orientation=1
         if self.path.suffix.lower() in {'.tif','.tiff'}:
             self.embedded_header,self.tiff_orientation=tiff_header(self.path)
+        elif self.path.suffix.lower() in {'.jpg','.jpeg'}:
+            self.embedded_header=jpeg_header(self.path)
 
     @property
     def has_coordinates(self):

@@ -112,3 +112,29 @@ class ImageSourceTests(unittest.TestCase):
         np.testing.assert_allclose(np.moveaxis(pixels,0,-1),expected,atol=1e-7)
         self.assertEqual(header['NAXIS1'],12);self.assertEqual(header['NAXIS2'],16)
         self.assertEqual(path.read_bytes(),before)
+
+    def test_jpeg_fits_description_preserves_solution_sip_date_and_pixels(self):
+        header=fits.getheader(self.solved)
+        header['CTYPE1']='RA---TAN-SIP';header['CTYPE2']='DEC--TAN-SIP'
+        header['A_ORDER']=2;header['B_ORDER']=2;header['A_2_0']=1e-5;header['B_0_2']=-1e-5
+        for ending in ('\n','\r\n'):
+            path=self.folder/'astro.jpg';exif=Image.Exif();exif[274]=1
+            exif[270]=header.tostring(sep=ending,padding=False)
+            Image.fromarray(np.uint8(np.flipud(np.moveaxis(self.photo,0,-1))*255)).save(path,exif=exif)
+            before=path.read_bytes();source=FileImageSource(path)
+            self.assertTrue(source.has_coordinates)
+            actual,saved=source.snapshot()
+            with Image.open(path) as image: expected=np.asarray(image)[::-1]/255
+            np.testing.assert_allclose(np.moveaxis(actual,0,-1),expected,atol=1e-7)
+            self.assertEqual(saved['A_2_0'],header['A_2_0'])
+            self.assertEqual(source.date_info()['value'],'2026-10-15T00:00:00.000')
+            np.testing.assert_allclose(WCS(saved,naxis=2).all_pix2world([[2,3],[14,10]],0),WCS(header,naxis=2).all_pix2world([[2,3],[14,10]],0))
+            self.assertEqual(path.read_bytes(),before)
+
+    def test_stale_rotated_or_incomplete_jpeg_description_needs_solving(self):
+        header=fits.getheader(self.solved)
+        for orientation,size,description in ((6,(16,12),header.tostring(sep='\n',padding=False)),(1,(8,6),header.tostring(sep='\n',padding=False)),(1,(16,12),'ordinary caption'),(1,(16,12),'SIMPLE  = T\nCTYPE1=RA---TAN')):
+            path=self.folder/'stale.jpg';exif=Image.Exif();exif[274]=orientation;exif[270]=description
+            Image.new('RGB',size).save(path,exif=exif)
+            source=FileImageSource(path);self.assertFalse(source.has_coordinates)
+            with self.assertRaisesRegex(ValueError,'no embedded plate solution'): source.snapshot()

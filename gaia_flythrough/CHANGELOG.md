@@ -1,5 +1,12 @@
 # Gaia Flythrough releases
 
+## 0.9.5 — 2026-10-15
+
+- Read existing Siril FITS-style metadata from JPEG EXIF ImageDescription, preserving WCS/SIP and capture date. Share the complete description parser with Astro-TIFF.
+- Reuse only matching dimensions and normal EXIF orientation; reject stale/resized/rotated or invalid geometry for a fresh solve. Keep original pixels/files untouched.
+- Fix the supplied M27 JPEG opening as unsolved: its embedded solution now opens ready to prepare, with solver/object controls hidden and no ASTAP run. Its coordinates match the corresponding FITS at centre/corners and the capture date is restored.
+- Add JPEG metadata, SIP/date/pixel preservation, stale/rotated/incomplete metadata and no-solver UI regressions. Input-compatibility patch; ASTAP algorithms and existing project caches are unchanged.
+
 ## 0.9.4 — 2026-10-15
 
 - Keep status and counter areas at fixed heights and reserve progress/cancel space; wrapped messages no longer move the controls.
