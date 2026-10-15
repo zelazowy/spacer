@@ -18,6 +18,12 @@ from PyQt6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QFormLayout,QHBoxL
     QMessageBox,QPlainTextEdit,QGroupBox,QToolButton,QProgressBar,QSizePolicy,QDialog,QDialogButtonBox,QScrollArea)
 
 
+class ZoomSpinBox(QDoubleSpinBox):
+    """Show a direct scale without trailing zeroes, using the system locale."""
+    def textFromValue(self,value):
+        return self.locale().toString(value,'f',3).rstrip('0').rstrip(self.locale().decimalPoint())
+
+
 class Worker(QThread):
     progress=pyqtSignal(str)
     completed=pyqtSignal(str)
@@ -65,10 +71,9 @@ class FlythroughWindow(QWidget):
         form.setContentsMargins(16,16,16,16);form.setVerticalSpacing(12)
         self.seconds=QSpinBox();self.seconds.setRange(4,600);self.seconds.setValue(60)
         self.seconds.setSuffix(' s');form.addRow('Duration',self.seconds)
-        self.zoom=QDoubleSpinBox();self.zoom.setRange(0,10000);self.zoom.setValue(30)
-        self.zoom.setDecimals(1);self.zoom.setSuffix(' %');form.addRow('Final zoom increase',self.zoom)
-        self.zoom_hint=QLabel();self.zoom.valueChanged.connect(self.update_zoom_hint);self.update_zoom_hint()
-        form.addRow('',self.zoom_hint)
+        self.zoom=ZoomSpinBox();self.zoom.setDecimals(3);self.zoom.setRange(1,101)
+        self.zoom.setSingleStep(.1);self.zoom.setValue(1.3);self.zoom.setSuffix('×')
+        form.addRow('Final zoom',self.zoom)
         form.addRow(QLabel('24 fps · up to 1920 px wide · Iterative scene'))
         layout.addWidget(self.flight_group)
 
@@ -143,8 +148,9 @@ class FlythroughWindow(QWidget):
         toggle.toggled.connect(changed);layout.addWidget(toggle);layout.addWidget(content)
         return toggle
 
-    def update_zoom_hint(self):
-        self.zoom_hint.setText(f'{1+self.zoom.value()/100:g}× the starting image at the end of the flight')
+    def zoom_percent(self):
+        # Keep the existing project/export contract while presenting direct scale.
+        return round((self.zoom.value()-1)*100,1)
 
     def refresh_project(self):
         folder=Path(self.output.text()).expanduser().resolve()
@@ -234,7 +240,7 @@ class FlythroughWindow(QWidget):
                 self.advanced_toggle.setChecked(True);self.epoch.setFocus()
                 raise ValueError('Enter the observation date in Advanced settings; this image has no DATE-OBS.')
             Time(date)
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom.value(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),mode="iterative",
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=str(Path(self.executable.text()).resolve()),ffmpeg=str(Path(self.ffmpeg.text()).resolve()),
                 epoch=str(date),output=str(out),source=source)
@@ -263,7 +269,7 @@ class FlythroughWindow(QWidget):
                 raise ValueError('Create a flight or load a prepared field first.')
             if not Path(self.ffmpeg.text()).is_file() or not os.access(self.ffmpeg.text(),os.X_OK):
                 raise ValueError('Choose the FFmpeg executable in Advanced settings.')
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom.value(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),mode="iterative",
                 output=str(self.prepared),ffmpeg=self.ffmpeg.text(),reuse=True)
             self.launch(None,None,options)
         except Exception as exc: self.show_problem('Cannot render flight',str(exc))
@@ -285,7 +291,7 @@ class FlythroughWindow(QWidget):
             raise ValueError('This folder is not a SPACER project.')
         if restore:
             self.seconds.setValue(state.get('seconds',60))
-            self.zoom.setValue(state.get('zoom',30))
+            self.zoom.setValue(1+state.get('zoom',30)/100)
             if state.get('ffmpeg'): self.ffmpeg.setText(state['ffmpeg'])
         self.result_stem=state.get('last_render')
         self.result=folder if self.result_stem else None

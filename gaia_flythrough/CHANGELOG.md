@@ -1,5 +1,12 @@
 # Gaia Flythrough releases
 
+## 0.5.1 — 2026-10-15
+
+- Replace “Final zoom increase” percentages and the explanatory hint with direct “Final zoom” scale (default 1.3×, range 1×–101×).
+- Preserve existing project values, pipeline units, framing and export metadata through conversion at the UI boundary. Keep fractional values from older projects without rounding them away.
+- Record the development rule to commit every completed change with its version.
+- Corrective interface patch; rendering algorithms, extraction schemas and cache revision are unchanged.
+
 ## 0.5.0 — 2026-10-15
 
 - Reorganize the Siril window around Project and Flight, with one primary action for preparation, resuming or rendering.

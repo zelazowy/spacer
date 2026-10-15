@@ -1,7 +1,7 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.5.0 simplifies the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.5.1 simplifies zoom; 0.5.0 simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
@@ -23,13 +23,15 @@ Accuracy and visual quality matter more than analysis/rendering speed. Preserve 
 
 Reuse saved images, WCS, catalogue and scenes even after switching the current Siril image. Do not repeat AI removal or Gaia queries when a suitable cache exists.
 
-Defaults: 60 seconds, 30% zoom increase, 24 fps, 80 pc travel, 1.5-second easing at each end. Zoom range is 0–10000%.
+Defaults: 60 seconds, 1.3× final zoom, 24 fps, 80 pc travel, 1.5-second easing at each end. The interface uses 1×–101×. Project `zoom` and pipeline options retain percent increase (0–10000%) for compatibility; convert only at the UI boundary.
 
 Never overwrite exports. Names record version/mode/duration/zoom; collisions get numeric suffixes. Field preparation version/time and rendering version/time are separate. Historical unversioned analysis must remain labelled unversioned.
 
+Commit each completed change with its release version in the commit message. Keep each change independently referenceable; bump the shared version and changelog under the major.minor.patch rules.
+
 ## Interface conventions
 
-Keep project choice, duration, zoom and one state-specific primary action in the main window. Advanced preparation/tool paths live in a scrollable dialog; diagnostics use a separate Details disclosure. Use native palette and widgets, meaningful text, keyboard focus and visible progress. Surface required setup when validation fails. Disable settings and project switching during worker execution. Test new, partial, prepared, busy and failed states after changing the interface.
+Keep project choice, duration, direct final zoom scale and one state-specific primary action in the main window. Advanced preparation/tool paths live in a scrollable dialog; diagnostics use a separate Details disclosure. Use native palette and widgets, meaningful text, keyboard focus and visible progress. Surface required setup when validation fails. Disable settings and project switching during worker execution. Test new, partial, prepared, busy and failed states after changing the interface.
 
 ## Scientific scope
 

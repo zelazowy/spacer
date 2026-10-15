@@ -45,7 +45,9 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue(w.advanced_dialog.isVisible());self.assertEqual(w.size(),original_size)
         w.advanced_dialog.close()
         self.assertFalse(w.advanced_toggle.isChecked())
-        w.zoom.setValue(900);self.assertIn('10×',w.zoom_hint.text())
+        self.assertFalse(hasattr(w,'zoom_hint'))
+        w.zoom.setValue(10);self.assertEqual(w.zoom_percent(),900)
+        self.assertEqual(w.zoom.text(),'10×')
 
     def test_project_restore_and_switch_clear_previous_exports(self):
         w=self.window;saved=self.folder/'saved';saved.mkdir()
@@ -53,7 +55,7 @@ class LauncherTests(unittest.TestCase):
         (saved/'project.json').write_text(json.dumps(dict(seconds=25,zoom=150,last_render='flight')))
         for suffix in ('.mp4','.html'): (saved/('flight'+suffix)).touch()
         w.use_prepared(saved)
-        self.assertEqual(w.seconds.value(),25);self.assertEqual(w.zoom.value(),150)
+        self.assertEqual(w.seconds.value(),25);self.assertEqual(w.zoom.value(),2.5)
         self.assertTrue(w.video.isEnabled());self.assertFalse(w.preparation.isEnabled())
         self.assertEqual(w.start.text(),'Render flight')
         w.output.setText(str(self.folder/'new'));w.refresh_project()
@@ -105,3 +107,15 @@ class LauncherTests(unittest.TestCase):
             launch.assert_not_called();warning.assert_called_once()
         self.assertTrue(w.advanced_dialog.isVisible())
         self.assertIn('observation date',w.status.text())
+
+    def test_zoom_scale_preserves_existing_project_units(self):
+        w=self.window
+        self.assertEqual(w.zoom.value(),1.3);self.assertEqual(w.zoom_percent(),30)
+        for scale,percent in ((1,0),(2,100),(10,900),(101,10000),(1.301,30.1)):
+            w.zoom.setValue(scale)
+            self.assertEqual(w.zoom_percent(),percent)
+        saved=self.folder/'older';saved.mkdir()
+        (saved/'project.json').write_text(json.dumps(dict(zoom=30.1)))
+        w.use_prepared(saved)
+        self.assertAlmostEqual(w.zoom.value(),1.301)
+        self.assertEqual(w.zoom_percent(),30.1)

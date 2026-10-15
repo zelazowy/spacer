@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.5.0**. The Siril integration is available now; a standalone GUI and a unified CLI are planned.
+Current version: **0.5.1**. The Siril integration is available now; a standalone GUI and a unified CLI are planned.
 
 Launch `Siril_Gaia_Flythrough.py` from Siril with a single plate-solved FITS or TIFF image open. If the image is not solved, the script stops before creating outputs and recommends `Siril_ASTAP_PlateSolve.py` or Siril’s plate solver. Download or clone this repository, then add its folder to Siril’s Python script search paths. Refresh the script listing or restart Siril. Alternatively, enter this in Siril's console:
 
@@ -17,7 +17,7 @@ Keep the launcher beside the `gaia_flythrough` folder. The required helper files
 ## Workflow
 
 1. Open your finished, plate-solved image. Unsaved edits are included because the script snapshots the current pixels and header rather than reopening the disk file.
-2. Set duration and final zoom increase. Defaults are **60 seconds and 30%**; zoom now supports **0–10,000%** (100% = 2×; 900% = 10×). Rendering stays at **24 fps**, with **80 pc** of travel and **1.5-second** easing at each end. Deep zoom samples the background at its original resolution.
+2. Set duration and **Final zoom**. Defaults are **60 seconds and 1.3×**; zoom supports **1×–101×**. Rendering stays at **24 fps**, with **80 pc** of travel and **1.5-second** easing at each end. Deep zoom samples the background at its original resolution.
 3. In **Advanced settings…**, keep **Current pixels** if the image has already been stretched. For linear pixels, select **Linked autostretch**; it uses Siril's linked 8-bit autostretch preview for the working copy. A display stretch in Siril alone is not applied to an ordinary pixel snapshot.
 4. Advanced settings automatically selects an available **StarXTerminator** or **StarNet 2.5+**; change it if needed. The script discovers installed CLI tools; Browse can select a portable executable. StarXTerminator requires its installed model and active license; StarNet requires its companion model. The script does not activate licenses or download engines/models.
 5. Click **Prepare and render**. By default, preparation and renders share `flythrough/<image-name>/` beside the source. Browse selects a project folder. If the image has no DATE-OBS, enter its observation date. Gaia coordinates are propagated to that date before matching.
@@ -26,17 +26,17 @@ The current Siril image is left unchanged. Existing plate solutions are reused; 
 
 ## Interface
 
-The main window contains the current project, duration and final zoom increase. The zoom hint shows the resulting magnification. **Prepare and render** prepares a new image; **Resume and render** finishes partial preparation; **Render flight** reuses a completed project. **Open preview** and **Open video** become available when an export exists.
+The main window contains the current project, duration and **Final zoom**, expressed directly as a scale such as **1.3×** or **2×**. **Prepare and render** prepares a new image; **Resume and render** finishes partial preparation; **Render flight** reuses a completed project. **Open preview** and **Open video** become available when an export exists.
 
 Use **Open project…** to return to saved work. **New from Siril…** chooses a fresh project folder for the current image and opens its setup. The main project summary states whether SPACER uses current pixels or a saved image.
 
 **Advanced settings…** opens a scrollable dialog with image stretch, removal engine and executable, observation date, FFmpeg and project location. Tools are discovered automatically; the date comes from the image. Missing setup opens this dialog. For a linear image, choose linked autostretch before preparation. Saved projects disable preparation options because they reuse their saved image and tools.
 
-Progress and cancellation stay in the main window. **Details** reveals the processing log and opens automatically after a processing failure. Rendering locks project/settings controls until the worker has stopped. Cancellation keeps preparation and earlier exports and returns a status message. Defaults remain 60 seconds, 30% final zoom increase, 24 fps, 80 pc travel and 1.5-second easing.
+Progress and cancellation stay in the main window. **Details** reveals the processing log and opens automatically after a processing failure. Rendering locks project/settings controls until the worker has stopped. Cancellation keeps preparation and earlier exports and returns a status message. Defaults remain 60 seconds, 1.3× final zoom, 24 fps, 80 pc travel and 1.5-second easing.
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.5.0_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.5.0_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.5.1_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.5.1_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -83,7 +83,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.5.0**. The Siril title shows the running version. New export filenames include it, for example `flythrough_v0.5.0_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.5.1**. The Siril title shows the running version. New export filenames include it, for example `flythrough_v0.5.1_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 
