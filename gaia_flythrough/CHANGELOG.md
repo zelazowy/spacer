@@ -1,5 +1,10 @@
 # Gaia Flythrough releases
 
+## 0.9.6 — 2026-10-15
+
+- Keep title/subtitle height and spacing fixed in a single header container. Put spare window height below the content instead of stretching header labels and section spacing.
+- Check header geometry across window resizing, Details toggles and image-state changes; inspect the M27 window. Presentation patch; image processing and saved projects are unchanged.
+
 ## 0.9.5 — 2026-10-15
 
 - Read existing Siril FITS-style metadata from JPEG EXIF ImageDescription, preserving WCS/SIP and capture date. Share the complete description parser with Astro-TIFF.

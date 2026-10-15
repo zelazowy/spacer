@@ -344,3 +344,25 @@ class LauncherTests(unittest.TestCase):
             self.assertFalse(w.target.isVisible());self.assertTrue(w.solver_settings.isHidden())
             self.assertIn('JPEG EXIF',w.project_hint.text());self.assertEqual(w.epoch.text(),'2026-07-17')
         finally: w.close()
+
+    def test_header_height_and_spacing_survive_resizing_and_state_changes(self):
+        from PIL import Image
+        w=self.window
+        def geometry():
+            return (w.header.y(),w.header.height(),(w.heading.y(),w.heading.height()),(w.subtitle.y(),w.subtitle.height()),w.project_group.y())
+        self.app.processEvents();before=geometry()
+        for width,height in ((680,1100),(900,1200),(600,800)):
+            w.resize(width,height);self.app.processEvents()
+            self.assertEqual(geometry(),before)
+        for opened in (True,False,True):
+            w.details_toggle.setChecked(opened);self.app.processEvents()
+            self.assertEqual(geometry(),before)
+        unsolved=self.folder/'plain.jpg';Image.new('RGB',(16,12)).save(unsolved)
+        standalone=self.launcher.FlythroughWindow();standalone.show();self.app.processEvents()
+        try:
+            reference=(standalone.header.y(),standalone.header.height(),(standalone.heading.y(),standalone.heading.height()),(standalone.subtitle.y(),standalone.subtitle.height()),standalone.project_group.y())
+            standalone.use_image(unsolved);self.app.processEvents()
+            self.assertEqual((standalone.header.y(),standalone.header.height(),(standalone.heading.y(),standalone.heading.height()),(standalone.subtitle.y(),standalone.subtitle.height()),standalone.project_group.y()),reference)
+            standalone.resize(800,1200);self.app.processEvents()
+            self.assertEqual((standalone.header.y(),standalone.header.height(),(standalone.heading.y(),standalone.heading.height()),(standalone.subtitle.y(),standalone.subtitle.height()),standalone.project_group.y()),reference)
+        finally: standalone.close()

@@ -70,9 +70,15 @@ class FlythroughWindow(QWidget):
         self.resize(680,560)
         self.setMinimumWidth(600)
         layout=QVBoxLayout(self);layout.setContentsMargins(24,20,24,20);layout.setSpacing(16)
-        heading=QLabel('SPACER');font=heading.font();font.setPointSize(24);font.setBold(True);heading.setFont(font)
-        layout.addWidget(heading)
-        subtitle=QLabel('A walk through your astrophotography.');layout.addWidget(subtitle)
+        self.header=QWidget();header_layout=QVBoxLayout(self.header)
+        header_layout.setContentsMargins(0,0,0,0);header_layout.setSpacing(6)
+        self.heading=QLabel('SPACER');font=self.heading.font();font.setPointSize(24);font.setBold(True);self.heading.setFont(font)
+        self.subtitle=QLabel('A walk through your astrophotography.')
+        for label in (self.heading,self.subtitle):
+            label.setSizePolicy(QSizePolicy.Policy.Preferred,QSizePolicy.Policy.Fixed)
+            header_layout.addWidget(label)
+        self.header.setSizePolicy(QSizePolicy.Policy.Preferred,QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.header)
 
         self.project_group=QGroupBox('Project');project_layout=QVBoxLayout(self.project_group)
         project_layout.setContentsMargins(16,16,16,16);project_layout.setSpacing(10)
@@ -190,6 +196,8 @@ class FlythroughWindow(QWidget):
             policy=control.sizePolicy();policy.setRetainSizeWhenHidden(True);control.setSizePolicy(policy)
         self.render_counter.setFixedHeight(self.render_counter.fontMetrics().lineSpacing()*2+4)
         self.append_log('Ready. Open an image or a saved project.' if not siril else 'Ready. Current pixels are used by default. For a linear image, select linked autostretch in Advanced settings.')
+        # Spare window height belongs below the content, never between labels.
+        layout.addStretch(1)
         self.settings=[self.flight_group,self.advanced,self.project_group]
         self.output.editingFinished.connect(self.refresh_project)
         self.refresh_project()
