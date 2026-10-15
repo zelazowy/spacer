@@ -151,3 +151,21 @@ class LauncherTests(unittest.TestCase):
                     self.assertIsNone(launch.call_args.args[0])
                     self.assertTrue(launch.call_args.args[2].reuse)
             finally: w.close()
+
+    def test_open_raster_has_no_surprise_second_dialog(self):
+        from PIL import Image
+        path=self.folder/'photo.png';Image.new('RGB',(16,12)).save(path)
+        w=self.launcher.FlythroughWindow();w.show()
+        try:
+            with patch.object(self.launcher.QFileDialog,'getOpenFileName',return_value=(str(path),'')) as chooser:
+                w.open_image()
+                chooser.assert_called_once()
+            self.assertEqual(w.file_source.path,path.resolve())
+            self.assertTrue(w.coordinates.isVisible())
+            self.assertFalse(w.start.isEnabled())
+            self.assertIn('Sky coordinates needed',w.coordinates_hint.text())
+            with patch.object(self.launcher.QFileDialog,'getOpenFileName',return_value=('','')):
+                w.open_coordinates()
+            self.assertEqual(w.file_source.path,path.resolve())
+            self.assertFalse(w.start.isEnabled())
+        finally: w.close()

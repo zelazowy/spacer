@@ -54,4 +54,4 @@ class ImageSourceTests(unittest.TestCase):
 
     def _raster_without_wcs(self):
         path=self.folder/'image.png';Image.new('RGB',(16,12)).save(path)
-        return FileImageSource(path)
+        return FileImageSource(path).header()

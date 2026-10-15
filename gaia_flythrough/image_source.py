@@ -16,11 +16,11 @@ class FileImageSource:
         self.is_fits=self.path.suffix.lower() in FITS_SUFFIXES
         if not self.is_fits and self.path.suffix.lower() not in {'.tif','.tiff','.png'}:
             raise ValueError('Choose a FITS, TIFF or PNG image.')
-        if not self.is_fits and not wcs_path:
-            raise ValueError('A TIFF/PNG needs a solved FITS file with identical dimensions and framing.')
-        self.wcs_path=self.path if self.is_fits else Path(wcs_path).expanduser().resolve()
+        self.wcs_path=self.path if self.is_fits else (Path(wcs_path).expanduser().resolve() if wcs_path else None)
 
     def header(self):
+        if self.wcs_path is None:
+            raise ValueError('A TIFF/PNG needs a solved FITS file with identical dimensions and framing.')
         header=fits.getheader(self.wcs_path)
         if not has_solution(header):
             raise ValueError('This file has no valid plate solution. Solve it with your preferred plate solver, then open it again.')

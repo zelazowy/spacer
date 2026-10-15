@@ -1,5 +1,12 @@
 # Gaia Flythrough releases
 
+## 0.6.1 — 2026-10-15
+
+- Remove the automatic second file dialog after opening a TIFF/PNG. Keep the photo selected and show an explicit sky-coordinate requirement and Choose solved FITS action in the main Project panel.
+- Explain that the reference is the same image's plate solution, separate from the automatically selected output folder. Disable rendering until a reference is selected; cancelling retains the photo.
+- Validate reference dimensions/pixels before accepting it. Add a regression check for the single image chooser and cancel behavior.
+- Corrective usability patch; project formats and rendering algorithms are unchanged.
+
 ## 0.6.0 — 2026-10-15
 
 - Add `SPACER.py`, a standalone desktop entry point with image/WCS/project startup arguments and version reporting; no Siril import or installation is needed.
