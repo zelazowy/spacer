@@ -47,7 +47,9 @@ class SolverTests(unittest.TestCase):
         with fits.open(out/'source_wcs.fits') as hdul:
             self.assertEqual(hdul[0].data.shape,(3,12,16))
             np.testing.assert_allclose(np.moveaxis(hdul[0].data,0,-1),expected,atol=1e-7)
-            self.assertEqual(hdul[0].header['DATE-OBS'],'2026-10-15')
+            self.assertTrue(hdul[0].header['DATE-OBS'].startswith('2026-10-15'))
+            self.assertEqual(hdul[0].header['DATESRC'],'Manual date')
+            self.assertFalse(hdul[0].header['DATEAPPX'])
         state=read_project(out)
         self.assertEqual(state['stage'],'solved');self.assertEqual(state['astrometry']['solver'],'ASTAP')
         # Project preparation uses the committed pixels even if the input is gone.
@@ -85,3 +87,14 @@ class SolverTests(unittest.TestCase):
         with patch('astap_solver.subprocess.Popen') as solver:
             with self.assertRaisesRegex(ValueError,'existing projects'): solve_project(self.options)
             solver.assert_not_called()
+
+    def test_solver_uses_labelled_filesystem_estimate_when_date_is_missing(self):
+        self.options.epoch=''
+        with patch('astap_solver.subprocess.Popen',side_effect=self.fake_process):
+            out=solve_project(self.options)
+        state=read_project(out)
+        self.assertTrue(state['date_info']['approximate'])
+        self.assertIn('File ',state['date_info']['source'])
+        header=fits.getheader(out/'source_wcs.fits')
+        self.assertTrue(header['DATEAPPX'])
+        self.assertEqual(header['DATE-OBS'],state['date_info']['value'])

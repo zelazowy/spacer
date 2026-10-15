@@ -1,5 +1,13 @@
 # Gaia Flythrough releases
 
+## 0.9.0 — 2026-10-15
+
+- Fill the matching date from FITS/Astro-TIFF observation headers, EXIF capture/digitized dates or a matching WCS reference. Fall back to image file-date metadata, filesystem creation time where supported, or modification time.
+- Label fallback dates as estimates and show their source in Advanced settings. Accept manual year/month estimates, using mid-year/mid-month dates explicitly marked approximate.
+- Preserve date value/source/approximation through ASTAP solving, project preparation, saved scenes, render metadata and reopening. Add DATEAPPX/DATESRC to internal FITS snapshots; never change source files or historical prepared scenes.
+- Add metadata precedence, invalid-date, filesystem, partial-date and Qt autofill/override regression coverage.
+- Minor usability feature; matching algorithms, extraction schemas and Iterative revision are unchanged.
+
 ## 0.8.0 — 2026-10-15
 
 - Remember the last standalone image/project and WCS reference across launches. Restore it on startup without arguments; explicit CLI input takes priority and Siril keeps its current image.

@@ -15,6 +15,7 @@ import astropy.units as u
 from image_source import FileImageSource
 from siril_pipeline import has_solution, save_project
 from version import VERSION, created_stamp
+from photo_date import stamp_date, date_info
 
 
 def find_astap():
@@ -43,7 +44,9 @@ def solve_project(options,progress=lambda message:None,cancel=None):
         raise ValueError('Invalid field height, search radius or downsampling.')
     source=FileImageSource(options.source,getattr(options,'wcs_path',None))
     pixels,header=source.snapshot(allow_unsolved=True)
+    info=getattr(options,'date_info',None) or (date_info(options.epoch,'Manual date') if options.epoch else source.date_info())
     if options.epoch: header['DATE-OBS']=options.epoch
+    stamp_date(header,info)
     ra=0.;dec=0.
     if options.target.strip():
         progress('Finding the approximate sky position…')
@@ -114,7 +117,7 @@ def solve_project(options,progress=lambda message:None,cancel=None):
         (out/'astap.log').write_text(output)
         save_project(out,created_with_version=VERSION,created_at=created_stamp(),stage='solved',
             source=str(source.path),engine=options.engine,executable=options.executable,epoch=str(header.get('DATE-OBS','')),
-            seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,
+            seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,date_info=info,
             astrometry=dict(solver='ASTAP',tool_version=VERSION,solved_at=created_stamp(),executable=str(executable),
                 database=options.database,target=options.target,fov=options.fov,radius=options.radius,binning=options.binning))
     progress('Sky position solved. The project is ready for preparation.')

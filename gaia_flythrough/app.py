@@ -7,6 +7,7 @@ import traceback
 
 from version import VERSION, field_description
 from preferences import Preferences
+from photo_date import infer_photo_date, date_info
 from siril_pipeline import normalized_pixels, parse_header, has_solution, find_tool, run_pipeline, render_prepared, load_prepared_scene, read_project, resume_project, UNSOLVED_MESSAGE
 from astropy.time import Time
 from image_source import FileImageSource
@@ -51,6 +52,7 @@ class FlythroughWindow(QWidget):
         super().__init__()
         self.siril=siril;self.file_source=None;self.worker=None;self.result=None;self.prepared=None;self.result_stem=None
         self.preferences=Preferences()
+        self.auto_date_info=None
         self.setWindowTitle(f'SPACER — v{VERSION}')
         self.resize(680,560)
         self.setMinimumWidth(600)
@@ -103,9 +105,12 @@ class FlythroughWindow(QWidget):
         self.executable=QLineEdit();prep.addRow('Engine executable',self.path_row(self.executable,False))
         self.engine.currentIndexChanged.connect(self.choose_engine);self.choose_engine()
         if not self.executable.text() and find_tool('starnet2'): self.engine.setCurrentIndex(1)
-        self.epoch=QLineEdit();self.epoch.setPlaceholderText('Automatic from image; override with YYYY-MM-DD')
+        self.epoch=QLineEdit();self.epoch.setPlaceholderText('Automatic; override with YYYY or YYYY-MM-DD')
         prep.addRow('Observation date',self.epoch)
-        date_hint=QLabel('Used to match moving Gaia stars to the photo’s capture date.\nUse the capture date, not the export date. A random date may still render but can match stars less accurately.')
+        self.date_origin=QLabel('Capture metadata is preferred; file dates are used as estimates.');self.date_origin.setWordWrap(True)
+        prep.addRow(self.date_origin)
+        self.epoch.textEdited.connect(self.update_date_origin)
+        date_hint=QLabel('Approximate capture year is enough for ordinary matching. You can correct the detected date or enter just a year.')
         date_hint.setWordWrap(True);prep.addRow(date_hint)
         self.epoch.setToolTip('Gaia positions are corrected for stellar proper motion at this date. A nearby estimate is better than an unrelated date.')
         note=QLabel(('Uses a copy of the current Siril pixels.' if siril else 'Uses saved file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.')
@@ -161,6 +166,7 @@ class FlythroughWindow(QWidget):
         self.settings=[self.flight_group,self.advanced,self.project_group]
         self.output.editingFinished.connect(self.refresh_project)
         self.refresh_project()
+        if self.siril: self.detect_siril_date()
         if self.image_filename() and Path(self.output.text()).exists():
             try: self.use_prepared(Path(self.output.text()))
             except (ValueError,OSError) as exc: self.status.setText(str(exc))
@@ -182,7 +188,7 @@ class FlythroughWindow(QWidget):
         try:
             candidate=FileImageSource(self.file_source.path,selected)
             candidate.snapshot()  # Validate dimensions and pixels before accepting the reference.
-            self.file_source=candidate;self.remember_image();self.preferences.save(reference_directory=str(Path(selected).resolve().parent));self.refresh_project()
+            self.file_source=candidate;self.set_date_info(candidate.date_info());self.remember_image();self.preferences.save(reference_directory=str(Path(selected).resolve().parent));self.refresh_project()
         except Exception as exc:
             self.status.setText(str(exc))
             QMessageBox.warning(self,'Cannot use sky coordinates',str(exc))
@@ -191,11 +197,34 @@ class FlythroughWindow(QWidget):
         source=FileImageSource(path,wcs_path)
         # Validate the header before changing the selected project.
         if source.has_coordinates: source.header()
-        self.file_source=source;self.prepared=None;self.epoch.clear()
+        self.file_source=source;self.prepared=None;self.set_date_info(source.date_info())
         self.output.setText(str(source.path.parent/'flythrough'/source.path.stem))
         self.refresh_project()
         self.remember_image()
         if Path(self.output.text()).exists(): self.use_prepared(Path(self.output.text()))
+
+    def set_date_info(self,info):
+        self.auto_date_info=info
+        self.epoch.setText(info['value'].split('T')[0] if info else '')
+        self.update_date_origin()
+
+    def selected_date_info(self):
+        text=self.epoch.text().strip()
+        if self.auto_date_info and text in (self.auto_date_info['value'],self.auto_date_info['value'].split('T')[0]): return dict(self.auto_date_info)
+        return date_info(text,'Manual date') if text else None
+
+    def update_date_origin(self,*_):
+        info=self.selected_date_info()
+        if info:
+            prefix='Estimated from ' if info['approximate'] else 'From '
+            self.date_origin.setText(prefix+info['source']+'. You can override it.')
+        else: self.date_origin.setText('No usable date found. Enter an approximate capture year.')
+
+    def detect_siril_date(self):
+        try:
+            header=parse_header(self.siril.get_image_fits_header(),require_solution=False)
+            self.set_date_info(infer_photo_date(self.image_filename() or '',header))
+        except (AttributeError,ValueError,OSError): pass
 
     def remember_image(self):
         if self.siril or not self.file_source: return
@@ -230,12 +259,14 @@ class FlythroughWindow(QWidget):
             if not self.file_source: raise ValueError('Open an image first.')
             resolve_astap(self.astap.text())
             if not self.output.text().strip(): raise ValueError('Choose a new project folder.')
-            date=self.epoch.text().strip() or self.file_source.header(require_solution=False).get('DATE-OBS','')
-            if date: Time(date)
+            info=self.selected_date_info()
+            if self.epoch.text().strip() and not info: raise ValueError('Enter a valid capture year or date.')
+            if not info: info=self.file_source.date_info()
+            date=info['value'] if info else ''
             options=SimpleNamespace(solve=True,output=self.output.text(),source=str(self.file_source.path),
                 wcs_path=str(self.file_source.wcs_path) if self.file_source.wcs_path else None,
                 astap=self.astap.text(),database=self.database.text().strip(),target=self.target.text().strip(),
-                fov=self.fov.value(),radius=self.radius.value(),binning=self.binning.value(),epoch=str(date),
+                fov=self.fov.value(),radius=self.radius.value(),binning=self.binning.value(),epoch=str(date),date_info=info,
                 seconds=self.seconds.value(),zoom=self.zoom_percent(),ffmpeg=self.ffmpeg.text(),
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',executable=self.executable.text())
             self.launch(None,None,options)
@@ -313,7 +344,7 @@ class FlythroughWindow(QWidget):
         if folder.exists():
             QMessageBox.information(self,'Choose a new folder','Choose a folder name that does not exist yet. Use Open project to return to an existing project.')
             return
-        self.prepared=None;self.epoch.clear();self.output.setText(str(folder));self.refresh_project()
+        self.prepared=None;self.output.setText(str(folder));self.refresh_project();self.detect_siril_date()
         self.advanced_toggle.setChecked(True)
 
     def report_progress(self,message):
@@ -371,7 +402,10 @@ class FlythroughWindow(QWidget):
                 pixels,header=self.file_source.snapshot()
             if not has_solution(header):
                 raise ValueError(UNSOLVED_MESSAGE)
-            date=self.epoch.text().strip() or header.get('DATE-OBS')
+            info=self.selected_date_info()
+            if self.epoch.text().strip() and not info: raise ValueError('Enter a valid capture year or date.')
+            if not info: info=infer_photo_date(source,header)
+            date=info['value'] if info else None
             if not date:
                 self.advanced_toggle.setChecked(True);self.epoch.setFocus()
                 raise ValueError('Enter the observation date in Advanced settings; this image has no DATE-OBS.')
@@ -379,7 +413,7 @@ class FlythroughWindow(QWidget):
             options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),mode="iterative",
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=str(Path(self.executable.text()).resolve()),ffmpeg=str(Path(self.ffmpeg.text()).resolve()),
-                epoch=str(date),output=str(out),source=source)
+                epoch=str(date),date_info=info,output=str(out),source=source)
             self.launch(pixels,header,options)
         except Exception as exc: self.show_problem('Cannot render flight',str(exc))
     def launch(self,pixels,header,options):
@@ -410,11 +444,12 @@ class FlythroughWindow(QWidget):
                     raise ValueError('Choose the star-removal executable in Advanced settings before preparing the project.')
                 date=self.epoch.text().strip() or read_project(self.prepared).get('epoch','')
                 if not date: raise ValueError('Enter the observation date in Advanced settings before preparing the project.')
-                Time(date)
+                if not self.selected_date_info(): raise ValueError('Enter a valid capture year or date.')
+            selected=self.selected_date_info()
             options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),mode="iterative",
                 output=str(self.prepared),ffmpeg=self.ffmpeg.text(),reuse=True,
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
-                executable=self.executable.text(),epoch=self.epoch.text().strip())
+                executable=self.executable.text(),epoch=selected['value'] if selected else '',date_info=selected)
             self.launch(None,None,options)
         except Exception as exc: self.show_problem('Cannot render flight',str(exc))
     def load_prepared(self):
@@ -440,7 +475,13 @@ class FlythroughWindow(QWidget):
             if state.get('stage')=='solved':
                 self.engine.setCurrentIndex(0 if state.get('engine')=='StarXTerminator' else 1)
                 self.executable.setText(state.get('executable',''))
-                self.epoch.setText(state.get('epoch',''))
+            saved_date=state.get('date_info') or saved_scene.get('date_info') or date_info(state.get('epoch',''),'Saved project date (source unrecorded)',True)
+            if not saved_date and state.get('stage')=='solved' and (folder/'source_wcs.fits').is_file():
+                from astropy.io import fits
+                original=Path(state.get('source') or folder/'source_wcs.fits')
+                if not original.is_file(): original=folder/'source_wcs.fits'
+                saved_date=infer_photo_date(original,fits.getheader(folder/'source_wcs.fits'))
+            self.set_date_info(saved_date)
             solver=state.get('astrometry',{})
             if solver.get('executable'): self.astap.setText(solver['executable'])
             if solver.get('database'): self.database.setText(solver['database'])
@@ -459,7 +500,7 @@ class FlythroughWindow(QWidget):
     def completed(self,path):
         if getattr(self.worker.options,'solve',False):
             self.use_prepared(Path(path))
-            self.report_progress('Sky position solved. Set the observation date in Advanced settings if needed, then prepare your flight.')
+            self.report_progress('Sky position solved. The matching date is filled automatically; you can review it in Advanced settings.')
             return
         self.result=Path(path);self.result_stem=self.worker.options.result_stem
         self.report_progress('Flight ready. Open the preview or video.');self.log.appendPlainText(str(self.result/(self.result_stem+'.mp4')))

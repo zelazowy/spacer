@@ -1,11 +1,12 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.9.0 infers matching dates with provenance; 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
 - SPACER.py: standalone desktop entry point; opens FITS, TIFF, PNG, JPEG or an existing project.
+- gaia_flythrough/photo_date.py: date parsing/inference from capture metadata, export/file metadata and filesystem dates; carries source/approximation provenance.
 - gaia_flythrough/preferences.py: portable, atomic local navigation settings in ignored `.spacer-settings.json`; injected temporary paths in tests.
 - gaia_flythrough/app.py: shared Qt interface and worker; no Siril import.
 - gaia_flythrough/astap_solver.py: cancellable ASTAP worker operation using a same-size mono proxy; only WCS is merged into the original colour snapshot.
@@ -42,13 +43,13 @@ Standalone launches must not import `sirilpy` or require Siril. Keep image loadi
 
 Standalone startup without explicit input restores the last selected image/project, including an external WCS reference when available. Explicit CLI inputs win; Siril keeps its current-image workflow. File dialogs start in the last successfully selected folder. Missing/corrupt preferences and missing last inputs must not block startup. Remember project folders after successful preparation or partial work so a restart resumes saved snapshots. Preferences are local to the checkout; avoid putting user paths in Git. A read-only preferences location must not break processing.
 
-Explain that observation date is for Gaia proper-motion matching, not an export timestamp or a check that rendering succeeds. Do not silently assume today or infer capture time from JPEG export metadata. This UI change does not alter matching, extraction schemas or cached fields.
+Explain that observation date is for Gaia proper-motion matching, not an export timestamp or a check that rendering succeeds. Prefer capture metadata. Since 0.9.0, export/file metadata and filesystem creation/modification time can supply a clearly labelled approximate matching epoch when capture time is absent. Never use POSIX ctime as creation time. Manual year/month values are approximate. Carry date_info through solving, preparation, scene/render provenance and restarts, with DATEAPPX/DATESRC on internal FITS copies. Do not reinterpret existing prepared fields or change extraction/cache schemas.
 
 ## Optional plate solving
 
 Only offer Solve sky position for standalone images without a usable solution. Reuse native FITS/Astro-TIFF WCS. JPEG pixels are EXIF-transposed before solving/preparation so both use the same frame. Solving runs in the shared worker with timeout/cancellation; never pass the original file to ASTAP with `-update`.
 
-The proxy is same-size mono scaled to 0–65535, following the local Siril_ASTAP_PlateSolve reference. Validate ASTAP's return code, PLTSOLVD flag, dimensions, celestial WCS, scale and finite corner coordinates. Remove old astrometry before merging WCS/SIP; preserve original colour pixels, geometry and date. Commit `source_wcs.fits` and a stage=`solved` project only after success. Solve failure leaves the selected image and no new project directory. A solved project resumes without ASTAP/source access; require a real observation date and permit engine selection until first preparation. Do not redo existing preparation after settings changes.
+The proxy is same-size mono scaled to 0–65535, following the local Siril_ASTAP_PlateSolve reference. Validate ASTAP's return code, PLTSOLVD flag, dimensions, celestial WCS, scale and finite corner coordinates. Remove old astrometry before merging WCS/SIP; preserve original colour pixels, geometry and date. Commit `source_wcs.fits` and a stage=`solved` project only after success. Solve failure leaves the selected image and no new project directory. A solved project resumes without ASTAP/source access; require a documented matching epoch (captured or inferred) and permit engine selection until first preparation. Do not redo existing preparation after settings changes.
 
 Real validation: installed ASTAP/D20 solved a downsampled finished M13 JPEG with position/field-height hints in approximately 0.5 s solver time. Center agreed with the original WCS to 0.8 arcsec; corners differed by 38–44 arcsec (ASTAP reported insufficient quads for SIP). The processed M45/M33 copies did not solve. This checks integration and orientation, not universal solvability or physical accuracy. Astrometry retains solver settings, SPACER version/time and the raw solver log.
 

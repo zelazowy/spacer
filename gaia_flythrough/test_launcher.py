@@ -192,7 +192,7 @@ class LauncherTests(unittest.TestCase):
             w.executable.setText('/bin/sh');w.ffmpeg.setText('/bin/sh')
             with patch.object(w,'launch') as launch:
                 w.begin();launch.assert_called_once()
-                self.assertEqual(launch.call_args.args[2].epoch,'2026-10-15')
+                self.assertTrue(launch.call_args.args[2].epoch.startswith('2026-10-15'))
         finally: w.close()
 
     def test_unsolved_fits_can_start_optional_solver(self):
@@ -243,4 +243,34 @@ class LauncherTests(unittest.TestCase):
                     missing.restore_last();self.assertIsNone(missing.prepared)
                 finally: missing.close()
             finally: restarted.close()
+        finally: w.close()
+
+    def test_date_autofill_is_labelled_and_year_override_reaches_pipeline(self):
+        import numpy as np
+        from astropy.io import fits
+        from astropy.wcs import WCS
+        from PIL import Image
+        wcs=WCS(naxis=2);wcs.wcs.ctype=['RA---TAN','DEC--TAN']
+        wcs.wcs.crval=[56,24];wcs.wcs.crpix=[8,6];wcs.wcs.cdelt=[-.01,.01]
+        path=self.folder/'capture.jpg';exif=Image.Exif();exif[36867]='2011:04:03 22:00:00'
+        Image.new('RGB',(16,12)).save(path,exif=exif)
+        reference=self.folder/'reference.fits'
+        fits.PrimaryHDU(np.zeros((3,12,16)),wcs.to_header()).writeto(reference)
+        w=self.launcher.FlythroughWindow()
+        try:
+            w.use_image(path,reference)
+            self.assertTrue(w.epoch.text().startswith('2011-04-03'))
+            self.assertIn('EXIF capture date',w.date_origin.text())
+            w.epoch.setText('2005');w.update_date_origin()
+            self.assertIn('Estimated',w.date_origin.text())
+            w.executable.setText('/bin/sh');w.ffmpeg.setText('/bin/sh')
+            with patch.object(w,'launch') as launch:
+                w.begin();launch.assert_called_once()
+                options=launch.call_args.args[2]
+                self.assertTrue(options.epoch.startswith('2005-07-01'))
+                self.assertTrue(options.date_info['approximate'])
+            plain=self.folder/'plain.jpg';Image.new('RGB',(16,12)).save(plain)
+            w.use_image(plain)
+            self.assertTrue(w.epoch.text());self.assertTrue(w.selected_date_info()['approximate'])
+            self.assertIn('File ',w.date_origin.text())
         finally: w.close()

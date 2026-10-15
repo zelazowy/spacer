@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.8.0**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.9.0**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -23,7 +23,7 @@ Click **Open image…** to select a finished FITS, TIFF, PNG or JPEG. Existing F
 
 If the image has no solution, click **Solve sky position**. SPACER uses your installed ASTAP and its star database. In **Advanced settings → Plate solving (ASTAP)**, choose the executable (or macOS `.app`) and optional database folder. Defaults are blind search, automatic field height and automatic downsampling. If a solve fails, add an approximate object name (such as `M13`) or RA/Dec (`16 41 38 +36 27 16`), and the image height on the sky in degrees. Object-name lookup needs internet; numeric coordinates and blind solving work offline. ASTAP’s automatic field-height search covers roughly 0.3–10°; supply a height outside that range. A blind search can take several minutes; solving times out after ten minutes and can be cancelled. See [ASTAP’s command-line documentation](https://www.hnsky.org/astap.htm#astap_command_line).
 
-A successful solve creates the project with the original colour pixels and its new WCS in `source_wcs.fits`, plus solver settings/provenance in `project.json` and `astap.log`. Original image files are never updated. Click **Resume and render** to prepare the star layers and render. Supply the observation date in Advanced settings when missing; SPACER does not substitute today’s date or a JPEG export timestamp. Star-removal settings remain editable until preparation starts. Reopen this project to reuse its solution without ASTAP or the original source file.
+A successful solve creates the project with the original colour pixels and its new WCS in `source_wcs.fits`, plus solver settings/provenance in `project.json` and `astap.log`. Original image files are never updated. Click **Resume and render** to prepare the star layers and render. The matching date is filled automatically from capture metadata or a labelled file-date estimate. Review or override it in Advanced settings when needed. Star-removal settings remain editable until preparation starts. Reopen this project to reuse its solution without ASTAP or the original source file.
 
 **Choose solved FITS…** remains an alternative under Advanced settings. The reference must have exactly the same dimensions and framing. Matching dimensions alone cannot verify registration: do not use a cropped, rotated or differently registered reference. The output folder is selected automatically beside the image and can be changed in Advanced settings.
 
@@ -61,7 +61,7 @@ Keep the launcher beside the `gaia_flythrough` folder. Keep the entire `gaia_fly
 2. Set duration and **Final zoom**. Defaults are **60 seconds and 1.3×**; zoom supports **1×–101×**. Rendering stays at **24 fps**, with **80 pc** of travel and **1.5-second** easing at each end. Deep zoom samples the background at its original resolution.
 3. In **Advanced settings…**, keep **Current pixels** if the image has already been stretched. For linear pixels, select **Linked autostretch**; it uses Siril's linked 8-bit autostretch preview for the working copy. A display stretch in Siril alone is not applied to an ordinary pixel snapshot.
 4. Advanced settings automatically selects an available **StarXTerminator** or **StarNet 2.5+**; change it if needed. The script discovers installed CLI tools; Browse can select a portable executable. StarXTerminator requires its installed model and active license; StarNet requires its companion model. The script does not activate licenses or download engines/models.
-5. Click **Prepare and render**. By default, preparation and renders share `flythrough/<image-name>/` beside the source. Browse selects a project folder. If the image has no DATE-OBS, enter its observation date. Gaia coordinates are propagated to that date before matching.
+5. Click **Prepare and render**. By default, preparation and renders share `flythrough/<image-name>/` beside the source. Browse selects a project folder. Review the automatically detected or estimated matching date if needed. Gaia coordinates are propagated to that date before matching.
 
 The current Siril image is left unchanged. Existing plate solutions are reused; the Siril launcher expects an already-solved image. Standalone input can use the optional ASTAP step. For a TIFF without DATE-OBS, enter the observation date before starting.
 
@@ -69,7 +69,9 @@ The current Siril image is left unchanged. Existing plate solutions are reused; 
 
 SPACER uses the date to correct Gaia catalogue positions for stellar proper motion before matching them to the photograph. It is the photo's capture date, not when the file was exported. Most stars move little over a short interval, so a different date can still produce a successful render; success does not verify the date or every star match. An unrelated date can shift fast-moving stars away from their photographed positions and cause missed or incorrect matches.
 
-Use DATE-OBS from the image where available, or enter the capture date. If only an approximate capture date is known, a nearby estimate is better than an unrelated date. Existing prepared projects retain their original matching; changing duration/zoom does not repeat it. No automatic substitute date has been added.
+SPACER fills the date automatically, preferring FITS/Astro-TIFF `DATE-OBS`/`DATE-AVG` or numeric observation epochs, then EXIF capture/digitized dates and a matching WCS-reference observation date. If these are absent or invalid, it uses EXIF/TIFF/PNG or FITS file-date metadata, then filesystem creation time when available, otherwise modification time. Filesystem change time (`ctime`) is not treated as creation time. These fallbacks are estimates and may reflect copying, processing or export rather than capture.
+
+Advanced settings shows the selected date and its source; fallback dates are marked **Estimated**. You may override with `YYYY`, `YYYY-MM` or a full date. Year-only input uses July 1; month-only input uses the 15th, both explicitly approximate. The selected date/source/approximation is saved with the project, snapshot (`DATEAPPX`/`DATESRC`), new prepared scene and render settings. Original images are unchanged. Historical prepared fields retain their original matching; changing duration/zoom or reopening the project does not redate them.
 
 ## Interface
 
@@ -83,7 +85,7 @@ Progress and cancellation stay in the main window. **Details** reveals the proce
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.8.0_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.8.0_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.9.0_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.9.0_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -130,7 +132,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.8.0**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.8.0_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.9.0**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.9.0_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 

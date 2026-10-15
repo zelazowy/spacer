@@ -15,6 +15,7 @@ from astropy.wcs import WCS
 import tifffile
 from flythrough import prepare, render_video
 from version import VERSION, created_stamp
+from photo_date import stamp_date, date_info
 
 
 UNSOLVED_MESSAGE = ('This image has no valid plate solution. Plate-solve it with your preferred solver '
@@ -123,13 +124,15 @@ def resume_project(out, options, progress=lambda message:None, cancel=None):
         epoch=getattr(options,'epoch','') or state.get('epoch','')
         if not epoch: raise ValueError('Enter the observation date in Advanced settings before preparing this project.')
         Time(epoch)
-        save_project(out,engine=getattr(options,'engine',state['engine']),
+        info=getattr(options,'date_info',None) or (state.get('date_info') if epoch==state.get('epoch') else date_info(epoch,'Manual date'))
+        save_project(out,date_info=info,engine=getattr(options,'engine',state['engine']),
             executable=getattr(options,'executable',state['executable']),epoch=epoch)
         state=read_project(out)
     options.engine=state['engine']
     options.executable=state['executable']
     options.epoch=state['epoch']
     options.source=state['source']
+    options.date_info=state.get('date_info')
     with fits.open(out/'source_wcs.fits') as hdul:
         return run_pipeline(hdul[0].data,hdul[0].header,options,progress,cancel)
 
@@ -151,12 +154,15 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
         save_project(out, created_with_version=VERSION, created_at=created_stamp(),
             source=str(options.source), engine=options.engine, executable=options.executable,
             epoch=str(options.epoch or header.get('DATE-OBS','')), stage='snapshot')
-    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg)
+    info=getattr(options,'date_info',None) or read_project(out).get('date_info')
+    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,date_info=info)
     header=header.copy();header['ROWORDER']='BOTTOM-UP'
     if options.epoch: header['DATE-OBS']=str(options.epoch)
+    stamp_date(header,info)
     if read_project(out).get('stage')=='solved':
         with fits.open(out/'source_wcs.fits',mode='update') as saved:
             saved[0].header['DATE-OBS']=str(options.epoch)
+            stamp_date(saved[0].header,info)
         save_project(out,stage='snapshot')
     if not (out/'source_wcs.fits').exists():
         fits.PrimaryHDU(photo,header).writeto(out/'source_wcs.fits')
@@ -195,6 +201,7 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
         fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress)
     progress('Matching stars to Gaia and screening distance uncertainty…')
     scene,background=prepare(args,out)
+    if info: scene=dict(scene,date_info=info)
     if cancel.is_set(): raise InterruptedError('Cancelled after catalogue matching.')
     (out/'scene.json').write_text(json.dumps(scene,allow_nan=False))
     save_project(out,stage='refinement')
@@ -256,7 +263,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     html=template.replace('EASERAMP',str(1.5/args.seconds)).replace('DURATION',str(args.seconds*1000)).replace('MAXTRAVEL','160').replace('TRAVEL','80').replace('MAXZOOM',str(max(11,args.zoom))).replace('ZOOM',str(args.zoom)).replace('SCENE',json.dumps(scene,allow_nan=False))
     (out/(stem+'.html')).write_text(html)
     (out/(stem+'.json')).write_text(json.dumps(dict(tool_version=VERSION,created_at=scene['render_created_at'],render_name=stem,
-        field_version=scene.get('prepared_with_version','unversioned'),field_created_at=scene.get('prepared_at'),
+        field_version=scene.get('prepared_with_version','unversioned'),field_created_at=scene.get('prepared_at'),date_info=scene.get('date_info'),
         extraction_version=scene.get('extraction_version'),iterative_revision=scene.get('iterative_revision'),
         duration_seconds=args.seconds,fps=24,
         final_zoom=args.zoom,travel_pc=80,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))

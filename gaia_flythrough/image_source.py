@@ -5,6 +5,7 @@ from astropy.io import fits
 import tifffile
 from PIL import Image, ImageOps
 from siril_pipeline import normalized_pixels, has_solution
+from photo_date import infer_photo_date
 
 FITS_SUFFIXES={'.fits','.fit','.fts'}
 
@@ -54,6 +55,11 @@ class FileImageSource:
         if require_solution and not has_solution(header):
             raise ValueError('This image has no embedded plate solution. Solve sky position with ASTAP or choose a solved FITS reference.')
         return header
+
+    def date_info(self):
+        header=self.native_header if self.native_header is not None else self.embedded_header
+        reference=fits.getheader(self.wcs_path) if self.wcs_path else None
+        return infer_photo_date(self.path,header,reference)
 
     def snapshot(self,allow_unsolved=False):
         header=self.header(require_solution=not allow_unsolved)
