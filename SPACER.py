@@ -23,6 +23,7 @@ def main():
     try:
         if args.image: window.use_image(args.image,args.wcs)
         elif args.project: window.use_prepared(Path(args.project))
+        else: window.restore_last()
     except Exception as exc:
         QMessageBox.warning(window,'Cannot open input',str(exc))
     window.show()

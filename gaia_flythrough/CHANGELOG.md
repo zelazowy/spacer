@@ -1,5 +1,13 @@
 # Gaia Flythrough releases
 
+## 0.8.0 — 2026-10-15
+
+- Remember the last standalone image/project and WCS reference across launches. Restore it on startup without arguments; explicit CLI input takes priority and Siril keeps its current image.
+- Remember successful image/project/reference picker directories. Skip missing remembered inputs safely; tolerate missing, corrupt or unwritable local preferences.
+- Keep atomic navigation settings in the ignored `.spacer-settings.json` beside the app; project data and export provenance remain separate.
+- Explain observation date beside the input and in documentation: Gaia positions are corrected for stellar proper motion at capture time. A render completing with a random date does not validate the match. Date handling and scientific calculations are unchanged.
+- Add restart/restore regression coverage. Minor navigation feature release; extraction schemas and cache revisions are unchanged.
+
 ## 0.7.0 — 2026-10-15
 
 - Accept finished JPEG images, applying EXIF orientation consistently before solving and preparation.

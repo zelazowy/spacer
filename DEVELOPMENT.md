@@ -1,11 +1,12 @@
 # SPACER development handoff
 
 **Stellar Parallax Animation through Catalogue-based Extraction and Reprojection.**
-Version 0.7.0 adds JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
+Version 0.8.0 remembers navigation and explains the matching date; 0.7.0 added JPEG input and optional ASTAP solving; 0.6.2 reads embedded Astro-TIFF solutions; 0.6.1 clarified raster coordinate selection; 0.6.0 added the standalone desktop app. The 0.5.x releases simplified the interface; 0.4.0 added persistent projects; 0.3.0 is the first explicitly versioned baseline. This repository is the canonical source.
 
 ## Architecture
 
 - SPACER.py: standalone desktop entry point; opens FITS, TIFF, PNG, JPEG or an existing project.
+- gaia_flythrough/preferences.py: portable, atomic local navigation settings in ignored `.spacer-settings.json`; injected temporary paths in tests.
 - gaia_flythrough/app.py: shared Qt interface and worker; no Siril import.
 - gaia_flythrough/astap_solver.py: cancellable ASTAP worker operation using a same-size mono proxy; only WCS is merged into the original colour snapshot.
 - gaia_flythrough/image_source.py: disk input validation, embedded Astro-TIFF FITS-header parsing and channel/row normalization.
@@ -36,6 +37,12 @@ Commit each completed change with its release version in the commit message. Kee
 Astro-TIFF uses ImageDescription tag 270, short FITS cards and LF/CRLF endings. TIFF dimensions are authoritative; preserve WCS/SIP/date cards and use the TIFF Orientation tag for raster storage, not the embedded ROWORDER. Tested with local M45/M33/M13/zenith Astro-TIFF files.
 
 Standalone launches must not import `sirilpy` or require Siril. Keep image loading at the source boundary and share the same project/render pipeline between entry points. Treat TIFF/PNG WCS references as user-supplied framing assertions; validate dimensions, do not claim that dimensions verify registration.
+
+## Navigation and date UX
+
+Standalone startup without explicit input restores the last selected image/project, including an external WCS reference when available. Explicit CLI inputs win; Siril keeps its current-image workflow. File dialogs start in the last successfully selected folder. Missing/corrupt preferences and missing last inputs must not block startup. Remember project folders after successful preparation or partial work so a restart resumes saved snapshots. Preferences are local to the checkout; avoid putting user paths in Git. A read-only preferences location must not break processing.
+
+Explain that observation date is for Gaia proper-motion matching, not an export timestamp or a check that rendering succeeds. Do not silently assume today or infer capture time from JPEG export metadata. This UI change does not alter matching, extraction schemas or cached fields.
 
 ## Optional plate solving
 

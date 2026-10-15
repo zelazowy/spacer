@@ -10,3 +10,7 @@ outputs/
 *.fit
 *.tif
 *.tiff
+
+# Local desktop navigation preferences
+.spacer-settings.json
+.spacer-settings.tmp

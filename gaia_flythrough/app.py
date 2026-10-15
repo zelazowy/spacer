@@ -6,6 +6,7 @@ import threading
 import traceback
 
 from version import VERSION, field_description
+from preferences import Preferences
 from siril_pipeline import normalized_pixels, parse_header, has_solution, find_tool, run_pipeline, render_prepared, load_prepared_scene, read_project, resume_project, UNSOLVED_MESSAGE
 from astropy.time import Time
 from image_source import FileImageSource
@@ -49,6 +50,7 @@ class FlythroughWindow(QWidget):
     def __init__(self,siril=None):
         super().__init__()
         self.siril=siril;self.file_source=None;self.worker=None;self.result=None;self.prepared=None;self.result_stem=None
+        self.preferences=Preferences()
         self.setWindowTitle(f'SPACER — v{VERSION}')
         self.resize(680,560)
         self.setMinimumWidth(600)
@@ -103,6 +105,9 @@ class FlythroughWindow(QWidget):
         if not self.executable.text() and find_tool('starnet2'): self.engine.setCurrentIndex(1)
         self.epoch=QLineEdit();self.epoch.setPlaceholderText('Automatic from image; override with YYYY-MM-DD')
         prep.addRow('Observation date',self.epoch)
+        date_hint=QLabel('Used to match moving Gaia stars to the photo’s capture date.\nUse the capture date, not the export date. A random date may still render but can match stars less accurately.')
+        date_hint.setWordWrap(True);prep.addRow(date_hint)
+        self.epoch.setToolTip('Gaia positions are corrected for stellar proper motion at this date. A nearby estimate is better than an unrelated date.')
         note=QLabel(('Uses a copy of the current Siril pixels.' if siril else 'Uses saved file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.')
         note.setWordWrap(True);prep.addRow(note);advanced_layout.addRow(self.preparation)
         self.solver_settings=QGroupBox('Plate solving (ASTAP)');solver_form=QFormLayout(self.solver_settings)
@@ -165,19 +170,19 @@ class FlythroughWindow(QWidget):
         return str(self.file_source.path) if self.file_source else None
 
     def open_image(self):
-        selected,_=QFileDialog.getOpenFileName(self,'Open a finished image',filter='Images (*.fits *.fit *.fts *.tif *.tiff *.png *.jpg *.jpeg)')
+        selected,_=QFileDialog.getOpenFileName(self,'Open a finished image',self.preferences.directory('image_directory'),filter='Images (*.fits *.fit *.fts *.tif *.tiff *.png *.jpg *.jpeg)')
         if not selected: return
         try: self.use_image(selected)
         except Exception as exc: self.show_problem('Cannot open image',str(exc))
 
     def open_coordinates(self):
         if not self.file_source: return
-        selected,_=QFileDialog.getOpenFileName(self,'Sky coordinates — select a solved FITS of this same image',filter='Solved FITS (*.fits *.fit *.fts)')
+        selected,_=QFileDialog.getOpenFileName(self,'Sky coordinates — select a solved FITS of this same image',self.preferences.directory('reference_directory'),filter='Solved FITS (*.fits *.fit *.fts)')
         if not selected: return
         try:
             candidate=FileImageSource(self.file_source.path,selected)
             candidate.snapshot()  # Validate dimensions and pixels before accepting the reference.
-            self.file_source=candidate;self.refresh_project()
+            self.file_source=candidate;self.remember_image();self.preferences.save(reference_directory=str(Path(selected).resolve().parent));self.refresh_project()
         except Exception as exc:
             self.status.setText(str(exc))
             QMessageBox.warning(self,'Cannot use sky coordinates',str(exc))
@@ -189,7 +194,36 @@ class FlythroughWindow(QWidget):
         self.file_source=source;self.prepared=None;self.epoch.clear()
         self.output.setText(str(source.path.parent/'flythrough'/source.path.stem))
         self.refresh_project()
+        self.remember_image()
         if Path(self.output.text()).exists(): self.use_prepared(Path(self.output.text()))
+
+    def remember_image(self):
+        if self.siril or not self.file_source: return
+        self.preferences.save(last_kind='image',last_image=str(self.file_source.path),
+            last_wcs=str(self.file_source.wcs_path) if self.file_source.wcs_path else '',
+            image_directory=str(self.file_source.path.parent))
+
+    def remember_project(self,folder):
+        folder=Path(folder).expanduser().resolve()
+        self.preferences.save(last_kind='project',last_project=str(folder),project_directory=str(folder.parent))
+
+    def restore_last(self):
+        """Standalone startup only; never replace Siril input or explicit CLI arguments."""
+        if self.siril: return
+        state=self.preferences.data
+        try:
+            if state.get('last_kind')=='project':
+                folder=state.get('last_project','')
+                if not isinstance(folder,str) or not folder or not Path(folder).is_dir(): return
+                self.use_prepared(Path(folder))
+            elif state.get('last_kind')=='image':
+                path=state.get('last_image','')
+                if not isinstance(path,str) or not path or not Path(path).is_file(): return
+                wcs=state.get('last_wcs','')
+                wcs=wcs if isinstance(wcs,str) and wcs and Path(wcs).is_file() else None
+                self.use_image(path,wcs)
+        except (ValueError,OSError,TypeError) as exc:
+            self.log.appendPlainText('Could not reopen the last input: '+str(exc))
 
     def solve_image(self):
         try:
@@ -384,7 +418,7 @@ class FlythroughWindow(QWidget):
             self.launch(None,None,options)
         except Exception as exc: self.show_problem('Cannot render flight',str(exc))
     def load_prepared(self):
-        selected=QFileDialog.getExistingDirectory(self,'Choose a SPACER project or an older prepared run folder')
+        selected=QFileDialog.getExistingDirectory(self,'Choose a SPACER project or an older prepared run folder',self.preferences.directory('project_directory'))
         if not selected: return
         try: self.use_prepared(Path(selected))
         except Exception as exc:
@@ -415,6 +449,7 @@ class FlythroughWindow(QWidget):
         self.preview.setEnabled(bool(self.result and (folder/(self.result_stem+'.html')).exists()))
         self.video.setEnabled(bool(self.result and (folder/(self.result_stem+'.mp4')).exists()))
         self.prepared=folder;self.output.setText(str(folder));self.refresh_project()
+        self.remember_project(folder)
         self.log.appendPlainText(f'Tool v{VERSION} · saved field {field_description(saved_scene)}\nReusing saved image and Gaia field: '+str(folder)+
             '\nSaved image and preparation settings are used for this project.')
     def cancel(self):
@@ -439,6 +474,7 @@ class FlythroughWindow(QWidget):
         self.cancel_button.hide();self.progress_bar.hide()
         self.load_scene.setEnabled(True)
         for control in self.settings: control.setEnabled(True)
+        if self.prepared and (self.prepared/'project.json').is_file(): self.remember_project(self.prepared)
         message=self.status.text()
         self.refresh_project()
         self.status.setText(message)

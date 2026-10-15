@@ -31,11 +31,14 @@ class LauncherTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
         self.folder=Path(self.temp.name)
+        from preferences import Preferences
+        self.preference_patch=patch.object(self.launcher,'Preferences',side_effect=lambda:Preferences(self.folder/'settings.json'))
+        self.preference_patch.start()
         self.window=self.launcher.FlythroughWindow(SimpleNamespace(get_image_filename=lambda:str(self.folder/'M45.fits')))
         self.window.show();self.app.processEvents()
 
     def tearDown(self):
-        self.window.close();self.temp.cleanup()
+        self.window.close();self.preference_patch.stop();self.temp.cleanup()
 
     def test_disclosures_keep_setup_out_of_main_workflow(self):
         w=self.window
@@ -214,4 +217,30 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue(w.preparation.isEnabled())
             self.assertEqual(w.engine.currentIndex(),1)
             self.assertTrue(w.start.isEnabled());self.assertFalse(w.coordinates.isVisible())
+        finally: w.close()
+
+    def test_navigation_survives_restart_and_missing_paths_are_safe(self):
+        from PIL import Image
+        path=self.folder/'remember.jpg';Image.new('RGB',(16,12)).save(path)
+        w=self.launcher.FlythroughWindow()
+        try:
+            w.use_image(path)
+            restarted=self.launcher.FlythroughWindow()
+            try:
+                restarted.restore_last()
+                self.assertEqual(restarted.file_source.path,path.resolve())
+                self.assertEqual(restarted.preferences.directory('image_directory'),str(path.resolve().parent))
+                project=self.folder/'last_project';project.mkdir()
+                (project/'scene_iterative.json').write_text('{}')
+                restarted.use_prepared(project)
+                again=self.launcher.FlythroughWindow()
+                try:
+                    again.restore_last();self.assertEqual(again.prepared,project.resolve())
+                finally: again.close()
+                (project/'scene_iterative.json').unlink();project.rmdir()
+                missing=self.launcher.FlythroughWindow()
+                try:
+                    missing.restore_last();self.assertIsNone(missing.prepared)
+                finally: missing.close()
+            finally: restarted.close()
         finally: w.close()

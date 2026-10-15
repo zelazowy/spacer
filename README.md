@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.7.0**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.8.0**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -29,7 +29,9 @@ A successful solve creates the project with the original colour pixels and its n
 
 File pixels must already be stretched and normalized (floating pixels in [0,1]; integer images use their datatype range). Standalone SPACER does not replace Siril's autostretch. Standard FITS row orders and TIFF Orientation 1–4 are supported; TIFF Orientation 5–8 requires an export with top-left orientation. JPEG EXIF rotation is applied before both solving and preparation. Monochrome and RGB images are supported. Some compressed TIFFs need an optional codec; export uncompressed TIFF if prompted. JPEG compression and heavy processing can prevent a reliable solve; TIFF/FITS are preferable when available. In local checks ASTAP solved a finished M13 JPEG; the tested M45/M33 copies did not match even with hints.
 
-**Open project…** reopens saved projects from either launcher without opening the source image or Siril.
+**Open project…** reopens saved projects from either launcher without opening the source image or Siril. Launching standalone SPACER without arguments reopens the last successfully selected image or project; explicit image/`--project` arguments take priority. Image, project and WCS-reference pickers remember their last successful folders. If the last input is missing, the app opens normally so you can choose another.
+
+Navigation preferences are stored locally in `.spacer-settings.json` beside `SPACER.py` (ignored by Git). Delete it to reset remembered locations. If that location is not writable, opening/rendering still works but navigation may not persist.
 
 You can select input when launching:
 
@@ -63,6 +65,12 @@ Keep the launcher beside the `gaia_flythrough` folder. Keep the entire `gaia_fly
 
 The current Siril image is left unchanged. Existing plate solutions are reused; the Siril launcher expects an already-solved image. Standalone input can use the optional ASTAP step. For a TIFF without DATE-OBS, enter the observation date before starting.
 
+## Why the observation date matters
+
+SPACER uses the date to correct Gaia catalogue positions for stellar proper motion before matching them to the photograph. It is the photo's capture date, not when the file was exported. Most stars move little over a short interval, so a different date can still produce a successful render; success does not verify the date or every star match. An unrelated date can shift fast-moving stars away from their photographed positions and cause missed or incorrect matches.
+
+Use DATE-OBS from the image where available, or enter the capture date. If only an approximate capture date is known, a nearby estimate is better than an unrelated date. Existing prepared projects retain their original matching; changing duration/zoom does not repeat it. No automatic substitute date has been added.
+
 ## Interface
 
 The main window contains the current project, duration and **Final zoom**, expressed directly as a scale such as **1.3×** or **2×**. **Prepare and render** prepares a new image; **Resume and render** finishes partial preparation; **Render flight** reuses a completed project. **Open preview** and **Open video** become available when an export exists.
@@ -75,7 +83,7 @@ Progress and cancellation stay in the main window. **Details** reveals the proce
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.7.0_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.7.0_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.8.0_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.8.0_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -122,7 +130,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.7.0**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.7.0_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.8.0**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.8.0_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 
