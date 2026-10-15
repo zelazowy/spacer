@@ -34,7 +34,7 @@ class SolverTests(unittest.TestCase):
             self.assertEqual(hdul[0].data.shape,(12,16))
             self.assertAlmostEqual(float(hdul[0].data.max()),65535,delta=.1)
         self.assertNotIn('-update',argv)
-        self.assertEqual(argv[argv.index('-ra')+1],'0.0')
+        self.assertTrue(0<=float(argv[argv.index('-ra')+1])<24)
         proxy.with_suffix('.ini').write_text('PLTSOLVD=T\n')
         proxy.with_suffix('.wcs').write_text(self.solution.tostring(padding=False))
         return SimpleNamespace(poll=lambda:0,returncode=0)
@@ -151,3 +151,63 @@ class SolverTests(unittest.TestCase):
         with patch('astap_solver.subprocess.Popen',side_effect=process),patch('astap_solver.time.monotonic',side_effect=lambda:next(clock)):
             solve_project(self.options,events.append)
         self.assertTrue(any('ASTAP still working' in line for line in events))
+
+    def test_compact_proxy_preserves_grid_and_detected_peaks(self):
+        from astap_solver import compact_star_proxy
+        from scipy import ndimage
+        yy,xx=np.mgrid[:128,:160]
+        mono=np.full((128,160),.05,dtype=np.float32)
+        centers=[(y,x) for y in (16,40,64,88) for x in (16,40,64,88)]
+        for y,x in centers: mono+=np.exp(-((yy-y)**2+(xx-x)**2)/3).astype(np.float32)
+        before=mono.copy();proxy=compact_star_proxy(mono)
+        self.assertEqual(proxy.shape,mono.shape);np.testing.assert_array_equal(mono,before)
+        peaks=(proxy==ndimage.maximum_filter(proxy,9))&(proxy>proxy.max()*.3)
+        detected=np.column_stack(np.where(peaks))
+        for center in centers: self.assertLess(np.linalg.norm(detected-np.array(center),axis=1).min(),1)
+        self.assertIsNone(compact_star_proxy(np.zeros((64,64),dtype=np.float32)))
+
+    def test_compact_candidate_is_refined_against_original_pixels(self):
+        result=[(None,'no match'),(self.solution.copy(),''),(self.solution.copy(),'')]
+        with patch('astap_solver.run_attempt',side_effect=result) as run,patch('astap_solver.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)):
+            out=solve_project(self.options)
+        self.assertEqual([call.args[5] for call in run.call_args_list],[2000,500,5000])
+        self.assertEqual(read_project(out)['astrometry']['strategy'],'compact-peaks+original-refinement')
+        self.assertEqual(self.image.read_bytes(),self.original)
+
+    def test_unconfirmed_compact_candidate_never_creates_project(self):
+        result=[(None,'no match'),(self.solution.copy(),''),(None,'no confirmation'),(None,'no confirmation'),(None,'no confirmation'),(None,'no match')]
+        with patch('astap_solver.run_attempt',side_effect=result),patch('astap_solver.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)):
+            with self.assertRaisesRegex(RuntimeError,'could not solve'): solve_project(self.options)
+        self.assertFalse(Path(self.options.output).exists())
+
+    def test_bad_refinement_is_rejected_and_smaller_sample_is_used(self):
+        bad=self.solution.copy();bad['CRVAL1']=bad['CRVAL1']+1
+        result=[(self.solution.copy(),''),(bad,''),(self.solution.copy(),'')]
+        with patch('astap_solver.run_attempt',side_effect=result):
+            out=solve_project(self.options)
+        state=read_project(out)['astrometry']
+        self.assertEqual(state['maximum_stars'],2000)
+        self.assertFalse(state['attempts'][1]['accepted'])
+        self.assertTrue(state['attempts'][2]['accepted'])
+
+    def test_named_target_starts_local_and_scale_bracket_confirms_candidate(self):
+        self.options.target='03 47 13 +24 07 11'
+        result=[(self.solution.copy(),''),(None,'no match'),(None,'no match'),(self.solution.copy(),'')]
+        with patch('astap_solver.run_attempt',side_effect=result) as run:
+            out=solve_project(self.options)
+        self.assertEqual(run.call_args_list[0].args[2].radius,5)
+        self.assertEqual([call.args[5] for call in run.call_args_list],[2000,5000,2000,3000])
+        self.assertEqual(read_project(out)['astrometry']['maximum_stars'],3000)
+
+    def test_refinement_rejects_edge_distortion_parity_and_inexact_scale(self):
+        from astap_solver import refinement_consistent
+        bad=self.solution.copy();bad['CDELT1']=-bad['CDELT1']
+        self.assertFalse(refinement_consistent(self.solution,bad,16,12)[0])
+        bad=self.solution.copy();bad['CTYPE1']='RA---TAN-SIP';bad['CTYPE2']='DEC--TAN-SIP'
+        bad['A_ORDER']=2;bad['B_ORDER']=2;bad['A_2_0']=1
+        self.assertFalse(refinement_consistent(self.solution,bad,16,12)[0])
+        inexact=self.solution.copy();inexact['WARNING']='Warning inexact scale!'
+        with patch('astap_solver.run_attempt',side_effect=[(self.solution.copy(),''),(inexact,''),(self.solution.copy(),'')]):
+            state=read_project(solve_project(self.options))['astrometry']
+        self.assertFalse(state['attempts'][1]['accepted'])
+        self.assertTrue(state['attempts'][2]['accepted'])

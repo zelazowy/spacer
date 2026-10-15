@@ -167,6 +167,10 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue(w.coordinates.isVisible())
             self.assertFalse(w.start.isEnabled())
             self.assertIn('Solve it with ASTAP',w.coordinates_hint.text())
+            self.assertTrue(w.target.isVisible());self.assertFalse(w.advanced_dialog.isVisible())
+            w.target.setText('M45')
+            w.use_image(path)
+            self.assertEqual(w.target.text(),'')
             with patch.object(self.launcher.QFileDialog,'getOpenFileName',return_value=('','')):
                 w.open_coordinates()
             self.assertEqual(w.file_source.path,path.resolve())

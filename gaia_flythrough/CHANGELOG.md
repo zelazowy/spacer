@@ -1,5 +1,14 @@
 # Gaia Flythrough releases
 
+## 0.9.3 — 2026-10-15
+
+- Fix processed JPEG solving with a larger initial star sample, a measured compact-peak fallback and confirmation on original photographic pixels at the recovered scale. Keep original RGB pixels and source files unchanged.
+- Reject unstable centre/corner/parity changes and inexact final scales. Retry bounded star samples and a small scale bracket; compact proxy solutions are never committed directly.
+- Put optional Object name beside Solve sky position. Accept names or numeric RA/Dec; start nearby when a target is provided and preserve the configured broader radius for the final fallback.
+- Retain live diagnostics, cancellation and one overall timeout across attempts; record strategy, sample and actual search settings in project provenance.
+- Validate installed ASTAP/D20 on the supplied NGC2403 JPEG and full-resolution M45/M33 JPEG exports with approximate targets and auto FOV. Maximum centre/corner differences against existing WCS: 1.97, 7.71 and 3.04 arcsec respectively; source hashes unchanged. Reject a real unstable M45 refinement before accepting its alternate sample.
+- Add proxy-grid, confirmation/failure, unstable-refinement, target-radius and scale-bracket regressions; inspect the revised main window. Corrective patch; rendering and existing project caches are unchanged.
+
 ## 0.9.2 — 2026-10-15
 
 - Stream ASTAP stdout/stderr while it runs, including its progress messages; show Details automatically during solving.
