@@ -1,5 +1,6 @@
-"""Photo-based, small-field Gaia fly-through prototype. See README.md."""
+"""Photo-based Gaia fly-through. See README.md."""
 from version import VERSION, created_stamp
+from catalog import get_catalog, check_cancel
 import argparse
 import base64
 import csv
@@ -8,8 +9,6 @@ import json
 from pathlib import Path
 import subprocess
 import time
-import urllib.parse
-import urllib.request
 
 import numpy as np
 from PIL import Image
@@ -44,53 +43,6 @@ def png_data(a):
     Image.fromarray(np.uint8(np.clip(a, 0, 1) * 255)).save(out, format='PNG')
     return 'data:image/png;base64,' + base64.b64encode(out.getvalue()).decode()
 
-
-def get_catalog(wcs, width, height, path, mag):
-    if path.exists():
-        with path.open() as f:
-            return list(csv.DictReader(f))
-    corners = wcs.pixel_to_world([0, width-1, 0, width-1], [0, 0, height-1, height-1])
-    center = wcs.pixel_to_world((width-1)/2, (height-1)/2)
-    radius = float(center.separation(corners).max().deg) * 1.05
-    if radius > 3:
-        raise ValueError('Prototype supports fields with radius <=3 degrees.')
-    query = f'''SELECT g.source_id,g.ra,g.dec,g.pmra,g.pmdec,g.ruwe,
-      g.phot_g_mean_mag,d.r_med_geo,d.r_lo_geo,d.r_hi_geo
-      FROM gaia.dr3lite AS g JOIN gedr3dist.main AS d USING (source_id)
-      WHERE 1=CONTAINS(POINT('ICRS',g.ra,g.dec),
-      CIRCLE('ICRS',{center.ra.deg:.10f},{center.dec.deg:.10f},{radius:.10f}))
-      AND g.phot_g_mean_mag < {mag:.3f}'''
-    payload = urllib.parse.urlencode(dict(REQUEST='doQuery', LANG='ADQL',
-        QUERY=query, FORMAT='csv', MAXREC=200000)).encode()
-    request = urllib.request.Request('https://dc.g-vo.org/tap/async', data=payload)
-    print('Querying Gaia DR3 and Bailer-Jones distances...', flush=True)
-    with urllib.request.urlopen(request, timeout=120) as response:
-        job_url = response.url.rstrip('/')
-        response.read()
-    run = urllib.request.Request(job_url+'/phase', data=b'PHASE=RUN')
-    with urllib.request.urlopen(run, timeout=30) as response:
-        response.read()
-    deadline=time.monotonic()+300
-    while True:
-        with urllib.request.urlopen(job_url+'/phase', timeout=30) as response:
-            phase=response.read().decode().strip()
-        if phase=='COMPLETED':
-            break
-        if phase in ('ERROR','ABORTED'):
-            with urllib.request.urlopen(job_url+'/error',timeout=30) as response:
-                raise ValueError(response.read().decode()[:2000])
-        if time.monotonic()>deadline:
-            raise TimeoutError('Gaia query exceeded five minutes: '+job_url)
-        time.sleep(2)
-    with urllib.request.urlopen(job_url+'/results/result',timeout=120) as response:
-        result=response.read().decode()
-    rows = list(csv.DictReader(io.StringIO(result)))
-    if not rows or 'source_id' not in rows[0]:
-        raise ValueError('Catalogue query returned no usable rows: ' + result[:300])
-    if len(rows) >= 200000:
-        raise ValueError('Catalogue row limit reached; use a brighter magnitude limit.')
-    path.write_text(result)
-    return rows
 
 
 def number(row, key):
@@ -143,6 +95,15 @@ def fit_compact_sprite(residual,x,y,peak_tree):
 
 
 def prepare(args, output):
+    progress=getattr(args,'progress',None) or print
+    cancel=getattr(args,'cancel_event',None)
+    last_update=time.monotonic()
+    def step_progress(label,done,total):
+        nonlocal last_update
+        check_cancel(cancel)
+        now=time.monotonic()
+        if now-last_update>=10:
+            progress(f'{label}: {done:,} / {total:,}…');last_update=now
     photo, starless = read_image(args.photo), read_image(args.starless)
     if photo.shape != starless.shape:
         raise ValueError('Photo and starless image must have identical dimensions and alignment.')
@@ -154,7 +115,9 @@ def prepare(args, output):
     epoch = args.epoch or header.get('DATE-OBS')
     if not epoch:
         raise ValueError('Provide --epoch (e.g. 2026-10-12) when WCS has no DATE-OBS.')
-    rows = get_catalog(wcs, w, h, output/'catalog.csv', args.magnitude)
+    rows = get_catalog(wcs,w,h,output/'catalog.csv',args.magnitude,
+        progress=progress,cancel=cancel)
+    check_cancel(cancel)
     residual = np.maximum(photo-starless, 0)
     brightness = residual.max(axis=2)
     # Each connected island is kept intact; blends are rejected below.
@@ -183,6 +146,7 @@ def prepare(args, output):
         deblended=np.zeros_like(labels)
         split_count=0
         for original_label,sl in enumerate(objects,1):
+            if original_label%256==0: step_progress('Separating detected star groups',original_label,len(objects))
             if sl is None: continue
             seeds=peak_islands.get(original_label,[])
             if not seeds: continue
@@ -198,6 +162,7 @@ def prepare(args, output):
         objects=ndimage.find_objects(labels)
     detections = []
     for label, sl in enumerate(objects, 1):
+        if label%256==0: step_progress('Measuring photographed stars',label,len(objects))
         if sl is None:
             continue
         mask = labels[sl] == label
@@ -216,6 +181,7 @@ def prepare(args, output):
             detections.append((x+sl[1].start,y+sl[0].start,label,sl))
     if not detections:
         raise ValueError('No stars detected; check starless alignment or lower --threshold.')
+    check_cancel(getattr(args,'cancel_event',None))
     sky = SkyCoord(ra=[number(r,'ra') for r in rows]*u.deg,
         dec=[number(r,'dec') for r in rows]*u.deg,
         pm_ra_cosdec=np.nan_to_num([number(r,'pmra') for r in rows])*u.mas/u.yr,
@@ -228,6 +194,7 @@ def prepare(args, output):
     tree = cKDTree(np.array([(d[0], d[1]) for d in detections]))
     candidates = {}
     for i, (x, y) in enumerate(zip(gx, gy)):
+        if i%1024==0: step_progress('Matching Gaia positions',i,len(rows))
         if not np.isfinite([x,y]).all():
             continue
         hits = tree.query_ball_point([x,y], args.match_pixels)
@@ -235,7 +202,8 @@ def prepare(args, output):
             candidates.setdefault(hits[0], []).append(i)
     background = photo.copy()
     stars, report, rejected = [], [], []
-    for di, matches in candidates.items():
+    for index,(di,matches) in enumerate(candidates.items(),1):
+        step_progress('Screening distances and fitting star cores',index,len(candidates))
         if len(matches) != 1:
             continue
         row = rows[matches[0]]

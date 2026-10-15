@@ -571,7 +571,7 @@ class FlythroughWindow(QWidget):
     def cancel(self):
         if self.worker:
             self.worker.cancel.set();self.cancel_button.setEnabled(False)
-            self.report_progress('Cancelling… Waiting for the current step to stop. A Gaia query may take up to five minutes.')
+            self.report_progress('Cancelling… Waiting for the current operation to stop. Completed catalogue regions are kept.')
     def completed(self,path):
         if getattr(self.worker.options,'solve',False):
             self.use_prepared(Path(path))

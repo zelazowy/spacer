@@ -1,5 +1,14 @@
 # Gaia Flythrough releases
 
+## 0.9.7 — 2026-10-15
+
+- Replace the prototype's 3° catalogue-radius rejection with overlapping spherical image-region queries. Cover polar fields and RA wrap; keep compact fields to one request when possible.
+- Check TAP VOTable completion and trailing overflow status. Subdivide dense/truncated regions without dropping faint stars or changing quality/distance screens; deduplicate exact Gaia identifiers.
+- Cache complete region downloads and subdivision decisions for retries. Publish the merged catalogue atomically only after complete success; preserve existing catalogues, prepared scenes and star-removal work.
+- Add region/star-count progress, cancellation during polling/matching and remote aborts. First preparation still depends on field density and service speed; subsequent renders reuse preparation.
+- Validate the real 5292×3488 Polaris footprint near Dec +89.5°: four regions, 86,412 unique sources; first query 277 s, cached reload 0.23 s on this run. Full-resolution core matching accepted 32,746 moving stars in 156 s using existing star-removal layers.
+- Add wide/polar/wrap coverage, overflow, partial retry, deduplication, empty/incomplete response, cancellation and query-key regression checks. Corrective catalogue-coverage patch; extraction/rendering algorithms and cache schemas are unchanged.
+
 ## 0.9.6 — 2026-10-15
 
 - Keep title/subtitle height and spacing fixed in a single header container. Put spare window height below the content instead of stretching header labels and section spacing.

@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.9.6**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.9.7**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -85,7 +85,7 @@ Progress and cancellation stay in the main window. Video export shows a filling 
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.9.6_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.9.6_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.9.7_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.9.7_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -100,9 +100,17 @@ Use **Open project…** to reuse a run folder after reopening the script. It acc
 - `catalog.csv`, `matched_stars.csv`, per-version settings JSON and `star-removal.log`: data and diagnostics.
 - Star-removal working FITS/TIFF files remain available for inspection.
 
-Existing prepared run folders are reused for additional renders; individual videos are never overwritten. A folder without a prepared field is rejected rather than mixed with unrelated files. Cancelling retains partial outputs; cancellation during Gaia matching takes effect after the outstanding query returns. Wait for the worker to finish before closing the window.
+Existing prepared run folders are reused for additional renders; individual videos are never overwritten. A folder without a prepared field is rejected rather than mixed with unrelated files. Cancelling retains partial outputs; catalogue cancellation is checked between network operations and during job polling; an outstanding HTTP call must return or time out first. Completed catalogue regions are retained for retry. Wait for the worker to finish before closing the window.
 
 Siril's Python environment needs numpy, scipy, astropy, Pillow, tifffile and PyQt6. The launcher uses `sirilpy.ensure_installed` to request missing Python dependencies. FFmpeg is an external executable and must already be installed. Both engines and all Python dependencies were found on this machine.
+
+## Wider fields and catalogue caching
+
+Wide photographs, including a 300 mm full-frame Polaris field, no longer hit the prototype's 3° catalogue-radius restriction. SPACER divides wider image footprints into overlapping sky regions, handles the celestial poles and RA wrap, and merges stars by their Gaia identifiers. Compact fields retain one request unless the result is too dense. Catalogue magnitude and distance/quality screens are unchanged.
+
+Downloads check the service's completion/overflow status. A truncated region is subdivided rather than accepted or made shallower. Completed requests are saved atomically in `catalog-parts/`; retries reuse matching parts, including after cancellation or network failure. `catalog.csv` appears only after every required region is complete. Existing saved catalogues and prepared scenes are reused as before. Open your interrupted project and choose **Resume and render** to reuse its saved star-removal output.
+
+The first download and matching can take longer for a larger or denser field and depend on the remote service; there is no guarantee of equal preparation time. Progress reports completed regions and unique stars. Once prepared, additional renders require no catalogue requests; render time depends on the number of moving stars and the output settings.
 
 ## Accuracy and validation
 
@@ -132,7 +140,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.9.6**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.9.6_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.9.7**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.9.7_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 
