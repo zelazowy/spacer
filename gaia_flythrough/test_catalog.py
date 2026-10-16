@@ -156,3 +156,16 @@ class CatalogTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'limits new preparation'):
                 get_catalog(w,601,401,path,18,lambda _:None)
             query.assert_not_called();self.assertFalse((Path(folder)/'catalog-parts').exists())
+
+    def test_remote_wait_is_indeterminate_then_restores_region_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events=[];path=Path(directory)/'catalog.csv'
+            def query(*args):
+                self.assertEqual(events[-1][0],'Waiting for Gaia region result')
+                self.assertLess(events[-1][2],0)
+                return [row(1)]
+            with patch('catalog.query_region',side_effect=query):
+                get_catalog(field(),601,401,path,18,lambda _:None,stage_progress=lambda *event:events.append(event))
+            known=[event for event in events if event[2]>=0]
+            self.assertEqual([e[1] for e in known],[0,1,2,3,4])
+            self.assertEqual(events[-1][1:3],(4,4))

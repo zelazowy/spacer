@@ -1,5 +1,10 @@
 # Gaia Flythrough releases
 
+## 0.9.11 — 2026-10-16
+
+- Use indeterminate activity progress while waiting for a live Gaia region query or its unknown-size result download. Hide stale region counters/time estimates during that wait.
+- Restore counted region progress once each completed result is saved, including fast requests. Add a remote-wait/count-restoration regression check; query behavior and caching are unchanged.
+
 ## 0.9.10 — 2026-10-16
 
 - Let Advanced settings inputs use the available dialog width, including engine/ASTAP/database, FFmpeg and project paths. Keep Browse buttons compact and give extra row space to the input.

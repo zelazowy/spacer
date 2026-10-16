@@ -24,9 +24,9 @@ class StageProgress:
         if self.callback: self.callback(self.label,self.done,self.total,now-self.started)
         self.last_emit=now
 
-    def update(self,done):
+    def update(self,done,force=False):
         self.check_cancel();self.done=done
-        if done==1 or done==self.total or time.monotonic()-self.last_emit>=.25: self.emit()
+        if force or done==1 or done==self.total or time.monotonic()-self.last_emit>=.25: self.emit()
 
     def set_total(self,total):
         self.check_cancel();self.total=total;self.emit()

@@ -181,6 +181,8 @@ def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None,stage_progr
         result=cached_rows(part) if part.exists() else None
         if result is None and not split.exists():
             try:
+                # Region counts do not describe progress inside a remote job.
+                StageProgress('Waiting for Gaia region result',-1,stage_progress,cancel=cancel)
                 result=query_region(query,cancel,progress)
                 check_cancel(cancel)
                 write_rows(part,result)
@@ -193,7 +195,8 @@ def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None,stage_progr
             for child in split_region(bounds): fetch(child,region_cone(wcs,child),depth+1)
             return
         for row in result: rows.setdefault(row['source_id'],row)
-        completed+=1;counter.update(completed)
+        # Restore region counts even when a fast request beats the throttle.
+        completed+=1;counter.update(completed,force=True)
         progress(f'Gaia catalogue: {completed} region(s) ready · {len(rows):,} unique stars.')
     for bounds,cone in regions: fetch(bounds,cone)
     check_cancel(cancel)
