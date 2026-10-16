@@ -304,7 +304,7 @@ class LauncherTests(unittest.TestCase):
             self.assertFalse(w.progress_bar.isVisible());self.assertFalse(w.render_counter.isVisible())
         finally: w.worker=None
 
-    def test_status_geometry_and_verbose_log_are_stable(self):
+    def test_status_geometry_and_full_details_log_are_stable(self):
         import io
         from contextlib import redirect_stdout
         from astap_solver import Diagnostic
@@ -314,18 +314,45 @@ class LauncherTests(unittest.TestCase):
         for message in ('Removing stars…','Matching stars to Gaia and screening distance uncertainty… '*4,'Line one\nLine two'):
             w.report_progress(message);self.app.processEvents()
             self.assertEqual((w.progress_bar.geometry(),w.cancel_button.geometry(),w.size()),before)
+        stage=w.status.text()
         w.report_progress('ASTAP | 2000 stars detected',True)
-        self.assertNotIn('2000 stars',w.log.toPlainText())
-        stage=w.status.text();w.verbose.setChecked(True)
+        self.assertFalse(w.log.isVisible());self.assertFalse(hasattr(w,'verbose'))
+        w.details_toggle.setChecked(True);self.app.processEvents()
         self.assertIn('2000 stars',w.log.toPlainText());self.assertEqual(w.status.text(),stage)
-        w.verbose.setChecked(False);self.assertNotIn('2000 stars',w.log.toPlainText())
-        worker=self.launcher.Worker(None,None,SimpleNamespace(verbose=False))
+        w.details_toggle.setChecked(False)
+        w.report_progress('ASTAP | final diagnostic',True)
+        w.details_toggle.setChecked(True)
+        self.assertIn('final diagnostic',w.log.toPlainText())
+        worker=self.launcher.Worker(None,None,SimpleNamespace())
+        received=[];worker.progress.connect(lambda message,detail:received.append((message,detail)))
         with redirect_stdout(io.StringIO()) as output:
             worker.report(Diagnostic('many quads'));worker.report('Solving sky position…')
         self.assertNotIn('many quads',output.getvalue());self.assertIn('Solving sky',output.getvalue())
-        worker.options.verbose=True
-        with redirect_stdout(io.StringIO()) as output: worker.report(Diagnostic('many quads'))
-        self.assertIn('many quads',output.getvalue())
+        self.assertIn(('many quads',True),received)
+
+    def test_known_stage_counters_reset_and_unknown_stages_use_activity(self):
+        w=self.window
+        w.show_stage_progress('Refining Iterative groups',0,20,0)
+        self.assertEqual(w.progress_bar.maximum(),1000);self.assertEqual(w.progress_bar.value(),0)
+        w.show_stage_progress('Refining Iterative groups',5,20,10)
+        self.assertEqual(w.progress_bar.value(),250);self.assertIn('5 / 20',w.render_counter.text())
+        self.assertIn('00:30 remaining',w.render_counter.text())
+        self.app.processEvents()
+        geometry=(w.progress_bar.geometry(),w.cancel_button.geometry(),w.header.geometry())
+        w.show_stage_progress('Refining Iterative groups',20,20,40)
+        self.assertEqual(w.progress_bar.value(),1000)
+        w.show_stage_progress('Saving Iterative field',0,-1,0);self.app.processEvents()
+        self.assertEqual(w.progress_bar.maximum(),0);self.assertFalse(w.render_counter.isVisible())
+        w.show_stage_progress('Detecting stars',0,300,0);self.app.processEvents()
+        self.assertEqual(w.progress_bar.value(),0);self.assertIn('0 / 300',w.render_counter.text())
+        self.assertEqual((w.progress_bar.geometry(),w.cancel_button.geometry(),w.header.geometry()),geometry)
+        w.show_stage_progress('Refining Iterative groups',0,0,0)
+        self.assertEqual(w.progress_bar.value(),1000);self.assertIn('0 / 0',w.render_counter.text())
+        w.worker=SimpleNamespace(cancel=threading.Event());w.worker.cancel.set()
+        try:
+            w.status.setText('Cancelling…');w.show_stage_progress('More groups',1,3,0)
+            self.assertEqual(w.status.text(),'Cancelling…')
+        finally: w.worker=None
 
     def test_solved_jpeg_hides_all_solver_controls_without_starting_astap(self):
         from astropy.io import fits

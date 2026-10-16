@@ -5,6 +5,7 @@ The bright-star position and each neighbour's depth remain catalogue anchored.
 """
 import numpy as np
 import json
+from task_progress import StageProgress, Diagnostic
 import csv
 import io
 from version import VERSION, created_stamp
@@ -152,7 +153,7 @@ neighbours must also be supplied; their fitted light stays stationary later.
     return layers,background,history
 
 
-def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None):
+def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,stage_progress=None):
     """Refine isolated catalogue-anchored bright groups in a Natural field.
 
     Close bright-bright overlaps and poorly fitted groups are deferred. All
@@ -160,12 +161,14 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None)
     is too uncertain to animate. Natural and Dynamic caches stay untouched.
     """
     from flythrough import read_image,fit_compact_sprite,png_data,number
+    StageProgress('Loading Iterative layers',-1,stage_progress,progress,cancel)
     folder=Path(folder)
     photo=read_image(folder/'photo.png');starless=read_image(folder/'starless.png')
     residual=np.maximum(photo-starless,0)
     h,w=photo.shape[:2]
     header=fits.getheader(folder/'source_wcs.fits');wcs=WCS(header,naxis=2).celestial
     with (folder/'catalog.csv').open() as file: rows=list(csv.DictReader(file))
+    positions_progress=StageProgress('Calculating Iterative catalogue positions',len(rows),stage_progress,progress,cancel)
     sky=SkyCoord(ra=[number(r,'ra') for r in rows]*u.deg,dec=[number(r,'dec') for r in rows]*u.deg,
         pm_ra_cosdec=np.nan_to_num([number(r,'pmra') for r in rows])*u.mas/u.yr,
         pm_dec=np.nan_to_num([number(r,'pmdec') for r in rows])*u.mas/u.yr,obstime=Time(2016.,format='jyear'))
@@ -174,11 +177,13 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None)
         raise ValueError('Iterative refinement needs DATE-OBS in the saved snapshot. Create a new prepared field with the observation date.')
     sky=sky.apply_space_motion(new_obstime=Time(epoch))
     gx,gy=wcs.world_to_pixel(sky);gy=h-1-gy
+    positions_progress.update(len(rows))
     def reliable(i):
         d,lo,hi,ruwe=[number(rows[i],key) for key in ('r_med_geo','r_lo_geo','r_hi_geo','ruwe')]
         return 0<lo<=d<=hi and (hi-lo)/(2*d)<=.2 and ruwe<=1.4
     candidates=[];core_flux={}
-    for i,(x,y) in enumerate(zip(gx,gy)):
+    selection=StageProgress('Selecting Iterative groups',len(rows),stage_progress,progress,cancel)
+    for i,(x,y) in enumerate(selection.track(zip(gx,gy))):
         if not np.isfinite([x,y]).all() or not (170<x<w-170 and 170<y<h-170): continue
         if not reliable(i) or number(rows[i],'phot_g_mean_mag')>11: continue
         if residual[int(y)-3:int(y)+4,int(x)-3:int(x)+4].max()<.35: continue
@@ -192,11 +197,12 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None)
     background=np.asarray(Image.open(io.BytesIO(base64.b64decode(scene['background'].split(',')[1]))),dtype=float)/255
     stars=list(scene['stars']);report=[];accepted_centers=[]
     optical_center=wcs.pixel_to_world((w-1)/2,(h-1)/2)
-    for step,primary_index in enumerate(candidates):
+    groups=StageProgress('Refining Iterative groups',len(candidates),stage_progress,progress,cancel)
+    for step,primary_index in enumerate(groups.track(candidates)):
         if cancel is not None and cancel.is_set(): raise InterruptedError('Iterative separation cancelled.')
         x,y=float(gx[primary_index]),float(gy[primary_index]);radius=160
         source_id=rows[primary_index]['source_id']
-        progress(f'Iterative group {step+1}/{len(candidates)}: Gaia {source_id}')
+        progress(Diagnostic(f'Iterative group {step+1}/{len(candidates)}: Gaia {source_id}'))
         separation=np.hypot(gx-x,gy-y)
         if np.any((separation<5)&(np.arange(len(rows))!=primary_index)):
             report.append(dict(source_id=source_id,status='deferred_unresolved_catalogue_companion'));continue
@@ -241,6 +247,7 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None)
         stars=retained;accepted_centers.append((x,y))
         report.append(dict(source_id=source_id,status='accepted',history=history,
             analysed_catalogue_sources=len(indices)+1,recovered_sources=recovered))
+    StageProgress('Saving Iterative field',-1,stage_progress,progress,cancel)
     result=dict(scene,stars=stars,background=png_data(background),extraction_version=6,iterative_revision=2,prepared_with_version=VERSION,prepared_at=created_stamp(),mode='iterative',
         label='Experimental iterative halo/spike separation; uncertain bright groups remain stationary')
     (folder/'iterative_report.json').write_text(json.dumps(report,indent=2))

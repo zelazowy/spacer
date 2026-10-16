@@ -1,6 +1,7 @@
 """Photo-based Gaia fly-through. See README.md."""
 from version import VERSION, created_stamp
 from catalog import get_catalog, check_cancel
+from task_progress import StageProgress
 import argparse
 import base64
 import csv
@@ -97,13 +98,12 @@ def fit_compact_sprite(residual,x,y,peak_tree):
 def prepare(args, output):
     progress=getattr(args,'progress',None) or print
     cancel=getattr(args,'cancel_event',None)
-    last_update=time.monotonic()
-    def step_progress(label,done,total):
-        nonlocal last_update
-        check_cancel(cancel)
-        now=time.monotonic()
-        if now-last_update>=10:
-            progress(f'{label}: {done:,} / {total:,}…');last_update=now
+    counter=getattr(args,'stage_progress',None)
+    def stage(label,total=-1):
+        return StageProgress(label,total,counter,progress,cancel)
+    def counted(items,label):
+        return stage(label,len(items)).track(items)
+    stage('Loading saved image layers')
     photo, starless = read_image(args.photo), read_image(args.starless)
     if photo.shape != starless.shape:
         raise ValueError('Photo and starless image must have identical dimensions and alignment.')
@@ -115,9 +115,11 @@ def prepare(args, output):
     epoch = args.epoch or header.get('DATE-OBS')
     if not epoch:
         raise ValueError('Provide --epoch (e.g. 2026-10-12) when WCS has no DATE-OBS.')
+    stage('Loading Gaia catalogue')
     rows = get_catalog(wcs,w,h,output/'catalog.csv',args.magnitude,
-        progress=progress,cancel=cancel)
+        progress=progress,cancel=cancel,stage_progress=counter)
     check_cancel(cancel)
+    stage('Detecting star peaks')
     residual = np.maximum(photo-starless, 0)
     brightness = residual.max(axis=2)
     # Each connected island is kept intact; blends are rejected below.
@@ -128,7 +130,7 @@ def prepare(args, output):
     peak_labels,_=ndimage.label(peaks)
     peak_slices=ndimage.find_objects(peak_labels)
     peak_positions=[]
-    for sl in peak_slices:
+    for sl in counted(peak_slices,'Locating star peaks'):
         if sl is None: continue
         yy,xx=np.unravel_index(np.argmax(smooth[sl]),smooth[sl].shape)
         peak_positions.append((xx+sl[1].start,yy+sl[0].start))
@@ -137,7 +139,7 @@ def prepare(args, output):
     # Split connected halos into separate peak-owned regions. Peaks without
     # usable catalogue distances still own pixels, so they cannot hitchhike.
     peak_islands={}
-    for pi,(px,py) in enumerate(peak_positions):
+    for pi,(px,py) in enumerate(counted(peak_positions,'Identifying star groups')):
         original_label=int(labels[py,px])
         if original_label: peak_islands.setdefault(original_label,[]).append(pi)
     dynamic=getattr(args,'mode','natural')=='dynamic'
@@ -145,8 +147,7 @@ def prepare(args, output):
     if not dynamic:
         deblended=np.zeros_like(labels)
         split_count=0
-        for original_label,sl in enumerate(objects,1):
-            if original_label%256==0: step_progress('Separating detected star groups',original_label,len(objects))
+        for original_label,sl in enumerate(counted(objects,'Separating detected star groups'),1):
             if sl is None: continue
             seeds=peak_islands.get(original_label,[])
             if not seeds: continue
@@ -161,8 +162,7 @@ def prepare(args, output):
         labels=deblended
         objects=ndimage.find_objects(labels)
     detections = []
-    for label, sl in enumerate(objects, 1):
-        if label%256==0: step_progress('Measuring photographed stars',label,len(objects))
+    for label, sl in enumerate(counted(objects,'Measuring photographed stars'),1):
         if sl is None:
             continue
         mask = labels[sl] == label
@@ -181,7 +181,7 @@ def prepare(args, output):
             detections.append((x+sl[1].start,y+sl[0].start,label,sl))
     if not detections:
         raise ValueError('No stars detected; check starless alignment or lower --threshold.')
-    check_cancel(getattr(args,'cancel_event',None))
+    positions_progress=stage('Calculating Gaia positions',len(rows))
     sky = SkyCoord(ra=[number(r,'ra') for r in rows]*u.deg,
         dec=[number(r,'dec') for r in rows]*u.deg,
         pm_ra_cosdec=np.nan_to_num([number(r,'pmra') for r in rows])*u.mas/u.yr,
@@ -191,10 +191,11 @@ def prepare(args, output):
     gx, gy = wcs.world_to_pixel(sky)
     if not args.raster_bottom_up:
         gy = h-1-gy
+    positions_progress.update(len(rows))
     tree = cKDTree(np.array([(d[0], d[1]) for d in detections]))
     candidates = {}
-    for i, (x, y) in enumerate(zip(gx, gy)):
-        if i%1024==0: step_progress('Matching Gaia positions',i,len(rows))
+    matching_progress=stage('Matching Gaia positions',len(rows))
+    for i,(x,y) in enumerate(matching_progress.track(zip(gx,gy))):
         if not np.isfinite([x,y]).all():
             continue
         hits = tree.query_ball_point([x,y], args.match_pixels)
@@ -202,8 +203,7 @@ def prepare(args, output):
             candidates.setdefault(hits[0], []).append(i)
     background = photo.copy()
     stars, report, rejected = [], [], []
-    for index,(di,matches) in enumerate(candidates.items(),1):
-        step_progress('Screening distances and fitting star cores',index,len(candidates))
+    for di,matches in counted(candidates.items(),'Fitting moving star cores'):
         if len(matches) != 1:
             continue
         row = rows[matches[0]]
@@ -240,6 +240,7 @@ def prepare(args, output):
         continue
     if not stars:
         raise ValueError('No unambiguous stars with sufficiently reliable distances matched. Check orientation, WCS, epoch and alignment.')
+    stage('Saving prepared star field')
     with (output/'matched_stars.csv').open('w') as f:
         writer=csv.DictWriter(f,fieldnames=list(report[0]));writer.writeheader();writer.writerows(report)
     with (output/'rejected_blends.csv').open('w') as f:

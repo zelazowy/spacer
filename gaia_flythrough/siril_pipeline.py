@@ -200,7 +200,8 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
     args=argparse.Namespace(photo=out/'photo.png',starless=out/'starless.png',wcs=out/'source_wcs.fits',
         epoch=options.epoch or None,magnitude=18,threshold=.008,match_pixels=3,max_uncertainty=.2,
         raster_bottom_up=False,travel=80,zoom=1+options.zoom/100,seconds=options.seconds,
-        fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress)
+        fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress,
+        stage_progress=getattr(options,'stage_progress',None))
     progress('Matching stars to Gaia and screening distance uncertainty…')
     scene,background=prepare(args,out)
     if info: scene=dict(scene,date_info=info)
@@ -244,7 +245,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
                 if natural.get('extraction_version',0)<4:
                     raise ValueError('This legacy field needs fresh preparation. Choose a new project folder; old exports are preserved.')
                 from iterative_deblend import refine_prepared_field
-                scene,background=refine_prepared_field(natural,out,progress,cancel)
+                scene,background=refine_prepared_field(natural,out,progress,cancel,stage_progress=getattr(options,'stage_progress',None))
                 path.write_text(json.dumps(scene,allow_nan=False))
         background=np.asarray(Image.open(io.BytesIO(base64.b64decode(scene['background'].split(',')[1]))),dtype=float)/255
     if scene.get('extraction_version',0)<4:

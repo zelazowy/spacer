@@ -37,4 +37,41 @@ class IterativeSeparationTests(unittest.TestCase):
         self.assertLess(history[-1]['mean_absolute_residual'],.01)
 
 
+    def test_group_progress_counts_deferred_and_failed_groups(self):
+        import csv,tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from PIL import Image
+        from astropy.io import fits
+        from astropy.wcs import WCS
+        from flythrough import png_data
+        from iterative_deblend import refine_prepared_field
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);width,height=1200,500
+            yy,xx=np.mgrid[:height,:width];light=np.zeros((height,width))
+            centers=[(250,250),(280,250),(900,250)]
+            for x,y in centers: light+=.6*np.exp(-((xx-x)**2+(yy-y)**2)/32)
+            photo=np.repeat(light[...,None],3,axis=2)
+            Image.fromarray(np.uint8(photo*255)).save(folder/'photo.png')
+            Image.new('RGB',(width,height)).save(folder/'starless.png')
+            wcs=WCS(naxis=2);wcs.wcs.ctype=['RA---TAN','DEC--TAN']
+            wcs.wcs.crval=[56,24];wcs.wcs.crpix=[600,250];wcs.wcs.cdelt=[-.001,.001]
+            header=wcs.to_header();header['DATE-OBS']='2016-01-01'
+            fits.PrimaryHDU(np.zeros((height,width),dtype=np.uint8),header).writeto(folder/'source_wcs.fits')
+            rows=[]
+            for i,(x,y) in enumerate(centers):
+                sky=wcs.pixel_to_world(x,height-1-y)
+                rows.append(dict(source_id=str(i),ra=sky.ra.deg,dec=sky.dec.deg,pmra=0,pmdec=0,
+                    r_med_geo=200,r_lo_geo=190,r_hi_geo=210,ruwe=1,phot_g_mean_mag=10))
+            with (folder/'catalog.csv').open('w') as file:
+                writer=csv.DictWriter(file,fieldnames=rows[0]);writer.writeheader();writer.writerows(rows)
+            events=[]
+            with patch('iterative_deblend.deblend_group',return_value=([],None,[{}])) as fit:
+                refine_prepared_field(dict(stars=[],background=png_data(photo)),folder,
+                    stage_progress=lambda *event:events.append(event))
+                fit.assert_called_once()
+            groups=[e for e in events if e[0]=='Refining Iterative groups']
+            self.assertEqual(groups[0][1:3],(0,3));self.assertEqual(groups[-1][1:3],(3,3))
+
+
 if __name__=='__main__': unittest.main()

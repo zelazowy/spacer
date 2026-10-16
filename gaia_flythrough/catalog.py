@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 from astropy.io.votable import parse_single_table
+from task_progress import StageProgress
 
 ENDPOINT='https://dc.g-vo.org/tap'
 MAX_ROWS=200000
@@ -158,7 +159,7 @@ def cached_rows(path):
     except (OSError,csv.Error): return None
 
 
-def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None):
+def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None,stage_progress=None):
     path=Path(path)
     check_cancel(cancel)
     validate_field(wcs,width,height)
@@ -168,6 +169,7 @@ def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None):
     if not np.isfinite(mag): raise ValueError('Catalogue magnitude must be finite.')
     regions=plan_regions(wcs,(0,width-1,0,height-1))
     cache=path.parent/(path.stem+'-parts');cache.mkdir(exist_ok=True)
+    counter=StageProgress('Downloading Gaia regions',len(regions),stage_progress,progress,cancel)
     progress(f'Downloading Gaia catalogue: {len(regions)} sky region(s). Completed regions are reused on retry.')
     rows={};completed=0
     def fetch(bounds,cone,depth=0):
@@ -186,11 +188,12 @@ def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None):
                 split.write_text('Service row limit reached; use subregions.\n')
         if result is None:
             if depth>=12: raise ValueError('Catalogue remains too dense after subdivision; no incomplete result has been saved.')
+            counter.set_total(counter.total+3)
             progress('Dense catalogue region; downloading smaller areas without dropping faint stars…')
             for child in split_region(bounds): fetch(child,region_cone(wcs,child),depth+1)
             return
         for row in result: rows.setdefault(row['source_id'],row)
-        completed+=1
+        completed+=1;counter.update(completed)
         progress(f'Gaia catalogue: {completed} region(s) ready · {len(rows):,} unique stars.')
     for bounds,cone in regions: fetch(bounds,cone)
     check_cancel(cancel)

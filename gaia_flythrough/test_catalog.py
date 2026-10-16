@@ -60,10 +60,12 @@ class CatalogTests(unittest.TestCase):
     def test_overflow_subdivision_dedup_and_final_cache(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'catalog.csv';w=field(scale=.001)
+            counters=[]
             with patch('catalog.query_region',side_effect=[CatalogOverflow(),[row(1)],[row(1),row(2)],[],[row(3)]]) as query:
-                rows=get_catalog(w,601,401,path,18,lambda _:None)
+                rows=get_catalog(w,601,401,path,18,lambda _:None,stage_progress=lambda *event:counters.append(event))
                 self.assertEqual(query.call_count,5)
             self.assertEqual([r['source_id'] for r in rows],['1','2','3'])
+            self.assertEqual(counters[0][1:3],(0,1));self.assertEqual(counters[-1][1:3],(4,4))
             with patch('catalog.query_region') as query:
                 self.assertEqual(get_catalog(w,601,401,path,18,lambda _:None),rows);query.assert_not_called()
 

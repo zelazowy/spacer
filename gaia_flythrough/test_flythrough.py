@@ -50,7 +50,14 @@ class MatchingTest(unittest.TestCase):
                 writer=csv.DictWriter(f,fieldnames=rows[0]);writer.writeheader();writer.writerows(rows)
             args=argparse.Namespace(photo=out/'photo.png',starless=out/'starless.png',wcs=out/'wcs.fits',
                 epoch='2016-01-01',magnitude=18,threshold=.008,match_pixels=3,max_uncertainty=.2,raster_bottom_up=False)
+            counters=[];args.stage_progress=lambda *event:counters.append(event)
             scene,bg=prepare(args,out)
+            labels={event[0] for event in counters if event[2]>=0}
+            self.assertTrue({'Locating star peaks','Matching Gaia positions','Fitting moving star cores'}<=labels)
+            for label in labels:
+                events=[event for event in counters if event[0]==label]
+                self.assertEqual(events[0][1],0);self.assertEqual(events[-1][1],events[-1][2])
+                self.assertTrue(all(a[1]<=b[1] for a,b in zip(events,events[1:])))
             self.assertEqual([s['source_id'] for s in scene['stars']],['0','1'])
             # The primary's fitted PSF tail may cross this pixel, but less than
             # 1% of the unmatched neighbour's 0.25 peak may move with it.

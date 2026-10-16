@@ -21,11 +21,7 @@ from image_source import FileImageSource
 from siril_pipeline import has_solution, save_project
 from version import VERSION, created_stamp
 from photo_date import stamp_date, date_info
-
-
-class Diagnostic(str):
-    """Verbose-only progress; retained solver logs always contain raw output."""
-    detail=True
+from task_progress import Diagnostic
 
 
 def find_astap():

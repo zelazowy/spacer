@@ -14,10 +14,11 @@ from siril_pipeline import normalized_pixels, parse_header, has_solution, find_t
 from astropy.time import Time
 from image_source import FileImageSource
 from astap_solver import solve_project, find_astap, resolve_astap
+from task_progress import Diagnostic
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QFormLayout,QHBoxLayout,
-    QLabel,QCheckBox,QComboBox,QSpinBox,QDoubleSpinBox,QLineEdit,QPushButton,QFileDialog,
+    QLabel,QComboBox,QSpinBox,QDoubleSpinBox,QLineEdit,QPushButton,QFileDialog,
     QMessageBox,QPlainTextEdit,QGroupBox,QToolButton,QProgressBar,QSizePolicy,QDialog,QDialogButtonBox,QScrollArea)
 
 
@@ -30,6 +31,7 @@ class ZoomSpinBox(QDoubleSpinBox):
 class Worker(QThread):
     progress=pyqtSignal(str,bool)
     frame_progress=pyqtSignal(int,int,float)
+    stage_progress=pyqtSignal(str,int,int,float)
     completed=pyqtSignal(str)
     failed=pyqtSignal(str)
     def __init__(self,pixels,header,options):
@@ -37,9 +39,10 @@ class Worker(QThread):
         self.pixels,self.header,self.options=pixels,header,options
         self.cancel=threading.Event()
         self.options.frame_progress=self.frame_progress.emit
+        self.options.stage_progress=self.stage_progress.emit
     def report(self,message):
         detail=getattr(message,'detail',False)
-        if not detail or getattr(self.options,'verbose',False):
+        if not detail:
             print(f'[{datetime.now():%H:%M:%S}] {message}',flush=True)
         self.progress.emit(str(message),detail)
 
@@ -55,7 +58,7 @@ class Worker(QThread):
             self.completed.emit(str(out))
         except Exception as exc:
             self.report(str(exc))
-            if getattr(self.options,'verbose',False): traceback.print_exc()
+            self.report(Diagnostic(traceback.format_exc()))
             self.failed.emit(str(exc))
 
 
@@ -186,10 +189,6 @@ class FlythroughWindow(QWidget):
         self.log=QPlainTextEdit();self.log.setReadOnly(True);self.log.setMaximumBlockCount(2000)
         self.log.setMinimumHeight(130);self.log.setMaximumHeight(200)
         self.log.setAccessibleName('Processing details')
-        self.log_history=[]
-        self.verbose=QCheckBox('Verbose');self.verbose.setChecked(bool(self.preferences.data.get('verbose',False)))
-        self.verbose.setToolTip('Show solver output, commands and diagnostic details in the log and terminal.')
-        self.verbose.toggled.connect(self.change_verbosity)
         self.details_toggle=self.disclosure(layout,'Details',self.log)
         # Keep progress and action positions stable as text/counters appear.
         for control in (self.progress_bar,self.render_counter,self.cancel_button):
@@ -330,8 +329,7 @@ class FlythroughWindow(QWidget):
             toggle.setArrowType(Qt.ArrowType.DownArrow if opened else Qt.ArrowType.RightArrow)
             self.resize(self.width(),self.sizeHint().height())
         toggle.toggled.connect(changed)
-        row=QHBoxLayout();row.addWidget(toggle);row.addStretch();row.addWidget(self.verbose)
-        layout.addLayout(row);layout.addWidget(content)
+        layout.addWidget(toggle,alignment=Qt.AlignmentFlag.AlignLeft);layout.addWidget(content)
         return toggle
 
     def zoom_percent(self):
@@ -386,16 +384,9 @@ class FlythroughWindow(QWidget):
         self.prepared=None;self.output.setText(str(folder));self.refresh_project();self.detect_siril_date()
         self.advanced_toggle.setChecked(True)
 
-    def change_verbosity(self,enabled):
-        self.preferences.save(verbose=enabled)
-        if self.worker: self.worker.options.verbose=enabled
-        self.log.setPlainText('\n'.join(text for text,detail in self.log_history if enabled or not detail))
-        self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
-
     def append_log(self,message,detail=False):
-        entry=f'[{datetime.now():%H:%M:%S}] {message}'
-        self.log_history.append((entry,detail));self.log_history=self.log_history[-2000:]
-        if not detail or self.verbose.isChecked(): self.log.appendPlainText(entry)
+        # Capture full diagnostics even while Details is collapsed.
+        self.log.appendPlainText(f'[{datetime.now():%H:%M:%S}] {message}')
 
     def report_progress(self,message,detail=False):
         self.append_log(message,detail)
@@ -403,20 +394,39 @@ class FlythroughWindow(QWidget):
             self.status.setToolTip(message)
             self.status.setText(message if len(message)<160 else message[:157]+'…')
 
+    @staticmethod
+    def elapsed_text(seconds):
+        seconds=max(0,int(seconds));minutes,seconds=divmod(seconds,60)
+        hours,minutes=divmod(minutes,60)
+        return f'{hours}:{minutes:02d}:{seconds:02d}' if hours else f'{minutes:02d}:{seconds:02d}'
+
+    def show_stage_progress(self,label,done,total,elapsed):
+        if self.worker and self.worker.cancel.is_set(): return
+        self.status.setText(label+'…');self.status.setToolTip(label)
+        self.progress_bar.show()
+        if total<0:
+            self.progress_bar.setRange(0,0);self.progress_bar.setTextVisible(False)
+            self.render_counter.clear();self.render_counter.hide();return
+        done=max(0,min(done,total))
+        self.progress_bar.setRange(0,1000)
+        self.progress_bar.setValue(1000 if total==0 else done*1000//total)
+        self.progress_bar.setTextVisible(True)
+        self.render_counter.setText(self.progress_counter(done,total,elapsed))
+        self.render_counter.show()
+
+    def progress_counter(self,done,total,elapsed,prefix=''):
+        counter=f'{prefix}{done:,} / {total:,} · elapsed {self.elapsed_text(elapsed)}'
+        if done>0 and done<total and elapsed>=2:
+            counter+=f' · about {self.elapsed_text(math.ceil(elapsed*(total-done)/done))} remaining'
+        return counter
+
     def show_frame_progress(self,done,total,elapsed):
         if total<=0: return
-        def clock(seconds):
-            seconds=max(0,int(seconds));minutes,seconds=divmod(seconds,60)
-            hours,minutes=divmod(minutes,60)
-            return f'{hours}:{minutes:02d}:{seconds:02d}' if hours else f'{minutes:02d}:{seconds:02d}'
         self.progress_bar.setRange(0,1000)
         # Frame submission can finish before FFmpeg flushes its output.
         self.progress_bar.setValue(min(999,done*1000//total))
         self.progress_bar.setTextVisible(True);self.progress_bar.show()
-        counter=f'Frames {done:,} / {total:,} · elapsed {clock(elapsed)}'
-        if done>0 and done<total and elapsed>=2:
-            counter+=f' · about {clock(math.ceil(elapsed*(total-done)/done))} remaining'
-        self.render_counter.setText(counter);self.render_counter.show()
+        self.render_counter.setText(self.progress_counter(done,total,elapsed,'Frames '));self.render_counter.show()
         if not self.worker or not self.worker.cancel.is_set():
             self.status.setText('Finalizing MP4…' if done==total else 'Rendering video…')
 
@@ -489,7 +499,6 @@ class FlythroughWindow(QWidget):
             self.prepared=Path(options.output).expanduser().resolve()
             self.result=None;self.preview.setEnabled(False);self.video.setEnabled(False)
             self.start.setEnabled(False);self.advanced_toggle.setEnabled(False);self.cancel_button.setEnabled(True);self.cancel_button.show()
-            options.verbose=self.verbose.isChecked()
             self.advanced_dialog.close();self.start.setText('Solving…' if getattr(options,'solve',False) else 'Processing…')
             self.render_succeeded=False;self.render_counter.clear();self.render_counter.hide()
             self.progress_bar.setRange(0,0);self.progress_bar.setTextVisible(False)
@@ -500,6 +509,7 @@ class FlythroughWindow(QWidget):
             self.worker=Worker(pixels,header,options)
             self.worker.progress.connect(self.report_progress)
             self.worker.frame_progress.connect(self.show_frame_progress)
+            self.worker.stage_progress.connect(self.show_stage_progress)
             self.worker.completed.connect(self.completed);self.worker.failed.connect(self.failed)
             self.worker.finished.connect(self.finished);self.worker.start()
     def render_variant(self):

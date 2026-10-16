@@ -1,5 +1,12 @@
 # Gaia Flythrough releases
 
+## 0.9.9 — 2026-10-16
+
+- Show determinate progress with completed/total counts, elapsed time and estimated remaining time for counted preparation work: peak location, star groups/measurements, Gaia positions/matching, core fitting, Iterative selection/groups and catalogue regions.
+- Use structured per-stage callbacks, throttled to about four updates/second. Count processed skipped/deferred entries; failed or cancelled entries never claim completion. Reset progress for each stage and use activity mode only for unknown totals. Preserve video finalization behavior.
+- Remove the Verbose checkbox. Details immediately shows the full captured diagnostic log, including messages collected while collapsed; keep the current step and launching terminal concise. Put per-group identifiers and worker tracebacks in diagnostics.
+- Add preparation/Iterative counting, cancellation, throttling, callback forwarding, adaptive catalogue totals and Qt display/logging regressions; inspect progress/Details screenshots. Presentation patch; extraction algorithms, cache schemas and saved projects are unchanged.
+
 ## 0.9.8 — 2026-10-15
 
 - Bound new preparation to a 5° centre-to-footprint radius (about a 10° diagonal), retaining support for the tested 300 mm full-frame Polaris field.

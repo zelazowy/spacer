@@ -86,7 +86,7 @@ class PipelineTests(unittest.TestCase):
             with self.subTest(engine=engine),tempfile.TemporaryDirectory() as folder:
                 out=Path(folder)/'flight'
                 options=SimpleNamespace(engine=engine,executable='/fake/engine',ffmpeg='ffmpeg',
-                    output=str(out),epoch='',seconds=30,zoom=15,source='source.tif',
+                    output=str(out),epoch='',seconds=30,zoom=15,source='source.tif',stage_progress=lambda *args:None,
                     date_info=dict(value='2026-08-15T00:00:00.000',source='File creation date',approximate=True))
                 def fake_engine(argv,*unused):
                     dest=Path(argv[argv.index('--output')+1])
@@ -99,8 +99,9 @@ class PipelineTests(unittest.TestCase):
                     self.assertEqual(args.wcs,(out/'source_wcs.fits').resolve())
                     self.assertEqual(args.ease_seconds,1.5)
                     self.assertEqual(args.fps,24)
+                    self.assertIs(args.stage_progress,options.stage_progress)
                     return dict(stars=[],width=16,height=12,background=png_data(np.zeros((12,16,3))),extraction_version=4),np.zeros((12,16,3))
-                with patch('siril_pipeline.run_engine',fake_engine),patch('siril_pipeline.prepare',fake_prepare),patch('siril_pipeline.render_video') as render,patch('iterative_deblend.refine_prepared_field',side_effect=lambda natural,*args:(dict(natural,extraction_version=6,iterative_revision=2),np.zeros((12,16,3)))):
+                with patch('siril_pipeline.run_engine',fake_engine),patch('siril_pipeline.prepare',fake_prepare),patch('siril_pipeline.render_video') as render,patch('iterative_deblend.refine_prepared_field',side_effect=lambda natural,*args,**kwargs:(dict(natural,extraction_version=6,iterative_revision=2),np.zeros((12,16,3)))):
                     run_pipeline(photo,header,options,cancel=threading.Event())
                     render.assert_called_once()
                     self.assertEqual(read_project(out)['date_info'],options.date_info)
