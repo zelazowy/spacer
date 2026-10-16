@@ -122,6 +122,8 @@ class FlythroughWindow(QWidget):
         self.advanced=QWidget();advanced_layout=QFormLayout(self.advanced)
         advanced_layout.setContentsMargins(0,8,0,0);advanced_layout.setVerticalSpacing(10)
         self.preparation=QGroupBox('First preparation only');prep=QFormLayout(self.preparation)
+        advanced_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        prep.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.stretch=QComboBox();self.stretch.addItems(['Current pixels (already stretched)','Linked autostretch (linear image)'])
         if not siril:
             self.stretch.clear();self.stretch.addItem('File pixels (already stretched)')
@@ -142,11 +144,14 @@ class FlythroughWindow(QWidget):
         note=QLabel(('Uses a copy of the current Siril pixels.' if siril else 'Uses saved file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.')
         note.setWordWrap(True);prep.addRow(note);advanced_layout.addRow(self.preparation)
         self.solver_settings=QGroupBox('Plate solving (ASTAP)');solver_form=QFormLayout(self.solver_settings)
+        solver_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.astap=QLineEdit(find_astap());solver_form.addRow('ASTAP executable',self.path_row(self.astap,False))
         self.database=QLineEdit('/usr/local/opt/astap' if Path('/usr/local/opt/astap').is_dir() else '')
         self.database.setPlaceholderText('Use ASTAP’s installed database')
         database_row=QWidget();database_layout=QHBoxLayout(database_row);database_layout.setContentsMargins(0,0,0,0)
-        database_layout.addWidget(self.database);browse_database=QPushButton('Browse…');database_layout.addWidget(browse_database)
+        database_row.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed)
+        database_layout.addWidget(self.database,1);browse_database=QPushButton('Browse…')
+        browse_database.setSizePolicy(QSizePolicy.Policy.Fixed,QSizePolicy.Policy.Fixed);database_layout.addWidget(browse_database)
         def choose_database():
             selected=QFileDialog.getExistingDirectory(self,'Choose ASTAP star database folder')
             if selected: self.database.setText(selected)
@@ -436,8 +441,11 @@ class FlythroughWindow(QWidget):
         QMessageBox.warning(self,title,message)
 
     def path_row(self,field,directory):
-        host=QWidget();row=QHBoxLayout(host);row.setContentsMargins(0,0,0,0)
-        row.addWidget(field);button=QPushButton('Browse…');row.addWidget(button)
+        host=QWidget();host.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed)
+        row=QHBoxLayout(host);row.setContentsMargins(0,0,0,0)
+        field.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed)
+        row.addWidget(field,1);button=QPushButton('Browse…')
+        button.setSizePolicy(QSizePolicy.Policy.Fixed,QSizePolicy.Policy.Fixed);row.addWidget(button)
         def browse():
             if directory:
                 selected=QFileDialog.getExistingDirectory(self,'Choose a project folder')

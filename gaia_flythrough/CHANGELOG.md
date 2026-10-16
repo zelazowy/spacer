@@ -1,5 +1,10 @@
 # Gaia Flythrough releases
 
+## 0.9.10 — 2026-10-16
+
+- Let Advanced settings inputs use the available dialog width, including engine/ASTAP/database, FFmpeg and project paths. Keep Browse buttons compact and give extra row space to the input.
+- Set form growth explicitly across platforms; inspect normal and wide dialog layouts. Corrective layout patch; settings and processing are unchanged.
+
 ## 0.9.9 — 2026-10-16
 
 - Show determinate progress with completed/total counts, elapsed time and estimated remaining time for counted preparation work: peak location, star groups/measurements, Gaia positions/matching, core fitting, Iterative selection/groups and catalogue regions.
