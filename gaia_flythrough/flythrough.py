@@ -118,7 +118,7 @@ def prepare(args, output):
     if not epoch:
         raise ValueError('Provide --epoch (e.g. 2026-10-12) when WCS has no DATE-OBS.')
     stage('Loading Gaia catalogue')
-    rows = get_catalog(wcs,w,h,output/'catalog.csv',args.magnitude,
+    rows = get_catalog(wcs,w,h,getattr(args,'catalog_path',output/'catalog.csv'),args.magnitude,
         progress=progress,cancel=cancel,stage_progress=counter)
     check_cancel(cancel)
     stage('Detecting star peaks')

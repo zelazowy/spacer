@@ -10,7 +10,7 @@ import traceback
 from version import VERSION, field_description
 from preferences import Preferences
 from photo_date import infer_photo_date, date_info
-from siril_pipeline import normalized_pixels, parse_header, has_solution, find_tool, run_pipeline, render_prepared, load_prepared_scene, read_project, resume_project, UNSOLVED_MESSAGE
+from siril_pipeline import normalized_pixels, parse_header, has_solution, find_tool, run_pipeline, render_prepared, load_prepared_scene, read_project, resume_project, calculation_folder, recalculation_missing, recalculate_project, UNSOLVED_MESSAGE
 from astropy.time import Time
 from image_source import FileImageSource
 from astap_solver import solve_project, find_astap, resolve_astap
@@ -52,6 +52,8 @@ class Worker(QThread):
             self.report('Project folder: '+str(self.options.output))
             if getattr(self.options,'solve',False):
                 out=solve_project(self.options,self.report,self.cancel)
+            elif getattr(self.options,'recalculate',False):
+                out=recalculate_project(self.options.output,self.options,self.report,self.cancel)
             elif getattr(self.options,'reuse',False):
                 out=resume_project(self.options.output,self.options,self.report,self.cancel)
             else:
@@ -69,6 +71,7 @@ class FlythroughWindow(QWidget):
         self.siril=siril;self.file_source=None;self.worker=None;self.result=None;self.prepared=None;self.result_stem=None
         self.preferences=Preferences()
         self.auto_date_info=None
+        self.prepared_star_limit=None;self.prepared_star_count=None
         self.render_succeeded=False
         self.setWindowTitle(f'SPACER — v{VERSION}')
         self.resize(680,560)
@@ -145,8 +148,17 @@ class FlythroughWindow(QWidget):
         note=QLabel(('Uses a copy of the current Siril pixels.' if siril else 'Uses saved file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.')
         note.setWordWrap(True);prep.addRow(note);advanced_layout.addRow(self.preparation)
         self.star_limit=QSpinBox();self.star_limit.setRange(100,MAX_MOVING_STARS);self.star_limit.setSingleStep(1000);self.star_limit.setValue(DEFAULT_MAX_STARS)
-        self.star_limit.setToolTip('Fewer moving stars make preparation and rendering faster. Unselected stars stay in the photograph. Existing fields can use fewer stars; preparing additional stars needs a new project.')
+        self.star_limit.setToolTip('Fewer moving stars make preparation and rendering faster. Unselected stars stay in the photograph. Use Recalculate stars to fit additional stars from the saved image layers.')
         advanced_layout.addRow('Moving stars (maximum)',self.star_limit)
+        self.recalculation=QWidget();recalculation_layout=QVBoxLayout(self.recalculation)
+        recalculation_layout.setContentsMargins(0,0,0,0)
+        self.calculation_hint=QLabel();self.calculation_hint.setWordWrap(True)
+        recalculation_layout.addWidget(self.calculation_hint)
+        self.recalculate_button=QPushButton('Recalculate stars');self.recalculate_button.setAutoDefault(False)
+        self.recalculate_button.clicked.connect(self.recalculate_stars)
+        recalculation_layout.addWidget(self.recalculate_button,alignment=Qt.AlignmentFlag.AlignLeft)
+        advanced_layout.addRow(self.recalculation)
+        self.star_limit.valueChanged.connect(self.update_calculation_hint)
         self.solver_settings=QGroupBox('Plate solving (ASTAP)');solver_form=QFormLayout(self.solver_settings)
         solver_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.astap=QLineEdit(find_astap());solver_form.addRow('ASTAP executable',self.path_row(self.astap,False))
@@ -350,12 +362,14 @@ class FlythroughWindow(QWidget):
         saved=any((folder/name).is_file() for name in ('project.json','scene.json','scene_iterative.json','preview.html'))
         self.project_title.setText(folder.name if saved else Path(self.image_filename() or ('Unsaved image' if self.siril else 'No image selected')).name)
         self.project_title.setToolTip(str(folder))
-        ready=(folder/'scene_iterative.json').is_file()
+        ready=(calculation_folder(folder)/'scene_iterative.json').is_file()
         new_hint=('Current Siril image · uses current pixels. For a linear image, choose autostretch in Advanced settings.' if self.siril else
             ('File image · uses already-stretched pixels.' if self.file_source else 'Open a finished image, or return to a saved project.'))
         self.project_hint.setText(('Saved image · ready to render; analysis is reused.' if ready else 'Saved image · missing preparation steps will resume.') if saved else new_hint)
         self.project_hint.setToolTip(str(folder))
         self.preparation.setEnabled(not saved or read_project(folder).get('stage')=='solved')
+        self.recalculation.setVisible(saved)
+        self.update_calculation_hint()
         self.start.setText(('Render flight' if ready else 'Resume and render') if saved else 'Prepare and render')
         if folder!=self.prepared:
             self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()
@@ -375,6 +389,28 @@ class FlythroughWindow(QWidget):
             self.coordinates_hint.setText('Sky position is not saved in this image.\nSolve it with ASTAP to prepare your flight.')
             self.status.setText('Solve sky position above. ASTAP settings are under Advanced settings.')
         self.start.setEnabled((saved or bool(self.siril or self.file_source)) and not missing)
+
+    def update_calculation_hint(self,*_):
+        if not hasattr(self,'output'): return
+        folder=Path(self.output.text()).expanduser().resolve()
+        missing=recalculation_missing(folder)
+        self.recalculate_button.setEnabled(not missing)
+        if missing:
+            self.calculation_hint.setText('Recalculation needs saved layers: '+', '.join(missing)+'.')
+        else:
+            summary=(f'Prepared: {self.prepared_star_count:,} moving stars. ' if folder==self.prepared and self.prepared_star_count is not None else '')
+            if folder==self.prepared and self.prepared_star_limit is not None and self.star_limit.value()>self.prepared_star_limit:
+                summary+='Recalculate to apply the higher limit. '
+            self.calculation_hint.setText(summary+'Reuses saved image, starless layer and Gaia catalogue. Previous calculations and exports are kept.')
+
+    def recalculate_stars(self):
+        try:
+            folder=Path(self.output.text()).expanduser().resolve()
+            missing=recalculation_missing(folder)
+            if missing: raise ValueError('Recalculation needs saved project files: '+', '.join(missing))
+            options=SimpleNamespace(output=str(folder),recalculate=True,max_stars=self.star_limit.value())
+            self.launch(None,None,options)
+        except Exception as exc: self.show_problem('Cannot recalculate stars',str(exc))
 
     def new_from_siril(self):
         name=Path(self.image_filename() or 'image').stem
@@ -556,9 +592,10 @@ class FlythroughWindow(QWidget):
     def use_prepared(self,folder,restore=True):
         folder=Path(folder).expanduser().resolve()
         state=read_project(folder)
-        if (folder/'scene_iterative.json').exists():
+        active=calculation_folder(folder)
+        if (active/'scene_iterative.json').exists():
             import json
-            saved_scene=json.loads((folder/'scene_iterative.json').read_text())
+            saved_scene=json.loads((active/'scene_iterative.json').read_text())
         else:
             saved_scene=load_prepared_scene(folder) if (folder/'scene.json').exists() or (folder/'preview.html').exists() else {}
         if not saved_scene and not state and not (folder/'scene_iterative.json').exists():
@@ -587,6 +624,8 @@ class FlythroughWindow(QWidget):
         self.video.setEnabled(bool(self.result and (folder/(self.result_stem+'.mp4')).exists()))
         if folder!=self.prepared:
             self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()
+        self.prepared_star_limit=saved_scene.get('motion_selection',{}).get('limit')
+        self.prepared_star_count=len(saved_scene['stars']) if 'stars' in saved_scene else None
         self.prepared=folder;self.output.setText(str(folder));self.refresh_project()
         self.remember_project(folder)
         self.append_log(f'Tool v{VERSION} · saved field {field_description(saved_scene)}\nReusing saved image and Gaia field: '+str(folder)+
@@ -599,6 +638,12 @@ class FlythroughWindow(QWidget):
         if getattr(self.worker.options,'solve',False):
             self.use_prepared(Path(path))
             self.report_progress('Sky position solved. The matching date is filled automatically; you can review it in Advanced settings.')
+            return
+        if getattr(self.worker.options,'recalculate',False):
+            self.use_prepared(Path(path))
+            self.render_succeeded=True
+            self.progress_bar.setRange(0,1000);self.progress_bar.setValue(1000);self.progress_bar.setTextVisible(True)
+            self.report_progress('Star calculations updated. Choose Render flight to create a new video.')
             return
         self.render_succeeded=True
         self.progress_bar.setRange(0,1000);self.progress_bar.setValue(1000);self.progress_bar.setTextVisible(True)

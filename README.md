@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.10.1**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.11.0**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -85,7 +85,7 @@ Progress and cancellation stay in the main window. Video export shows a filling 
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.10.1_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.10.1_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.11.0_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.11.0_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -122,7 +122,13 @@ A Gaia log such as “442,587 sources” describes reference data used to avoid 
 
 Iterative refinement attempts at most **16 group fits**, with at most **64 catalogue neighbours per fitted group**. More crowded groups are deferred in full; neighbours are not silently removed to make a fit cheaper. They keep the conservative core/photographic background treatment. Neighbour searches use a spatial index. `iterative_report.json` records dense-group and group-budget deferrals.
 
-Existing prepared scenes are preserved. Rendering with a lower limit selects brighter photographed sprites and adds unselected sprites back into the stationary background; saved analysis is not rewritten. Increasing the limit can reuse additional stars already present in an older field, but stars omitted during a new limited preparation require a new project to prepare again. Project/render JSON records the requested limit and selection provenance. The 0.10.0 release introduced this selection policy; 0.10.1 raises its default and maximum to 50,000. Saved project limits are respected; change an older 5,000 setting in Advanced settings to use the higher limit.
+Existing prepared scenes are preserved. Rendering with a lower limit selects brighter photographed sprites and adds unselected sprites back into the stationary background; saved analysis is not rewritten. Increasing the limit can reuse additional stars already present in an older field, and **Recalculate stars** fits additional candidates from the saved layers when preparation used a lower limit. Project/render JSON records the requested limit and selection provenance. The 0.10.0 release introduced this selection policy; 0.10.1 raised its default and maximum to 50,000. Saved project limits are respected; change an older 5,000 setting in Advanced settings and click **Recalculate stars** to use the higher limit.
+
+### Recalculate a saved project
+
+Open **Advanced settings**, set **Moving stars (maximum)** and click **Recalculate stars**. This reruns matching, core extraction and bounded Iterative refinement using `photo.png`, `starless.png`, `source_wcs.fits` and the complete cached `catalog.csv`. It does not rerun plate solving, AI star removal or catalogue downloads. Missing cached files are listed beside the disabled action. After completion, click **Render flight** to export a new video.
+
+Each successful recalculation is kept under `calculations/v<version>_<revision>/` with its scenes and diagnostics. The project switches to it only after all calculations succeed; cancellation/failure keeps the previous active analysis. Original calculations and exports remain available. Render metadata records the active calculation revision.
 
 ## Accuracy and validation
 
@@ -137,7 +143,7 @@ New preparations identify separate compact peaks and match them individually to 
 
 `rejected_blends.csv` records rejected Gaia matches and the reason. In the HTML preview, enable **Show extracted star boundaries** and click a star to see its Gaia identifier, distance interval and actual extracted pixel patch.
 
-Previously prepared fields keep their original extraction. **Render flight** does not repair those fields: choose a new project folder to prepare the image again with the new safeguards. Older fields can display patch boundaries, but may lack per-sprite Gaia identifiers.
+Previously prepared fields keep their original extraction. **Render flight** does not repair those fields: use **Recalculate stars** when the saved layers/catalogue are available, or choose a new project folder to prepare the image again. Older fields can display patch boundaries, but may lack per-sprite Gaia identifiers.
 
 
 ## Projects and Iterative scenes
@@ -148,11 +154,11 @@ The default project is `flythrough/<image-name>/` beside the source, with no tim
 
 `project.json` stores project schema, creation/update tool versions, source and removal settings, preparation stage, last render settings and latest completed export. Opening a project restores duration, zoom, FFmpeg and preview/video links. **Prepare and render** resumes partial preparation or renders a completed project. Changing duration or zoom only creates new HTML/settings/video exports; saved star removal, Gaia matching and Iterative separation are reused.
 
-A preparation interrupted after validated star removal reuses that output. Matching reuses a saved `catalog.csv`; completed core and Iterative scenes are reused independently. A failed or cancelled render preserves preparation and earlier exports. Incomplete star-removal outputs are rerun. Older prepared folders can be opened directly when they contain a compatible core scene plus the saved layers/catalogue needed for Iterative, or a current `scene_iterative.json`. Incompatible old extraction requires a new project folder. Historical Natural/Dynamic files and all exports remain on disk.
+A preparation interrupted after validated star removal reuses that output. Matching reuses a saved `catalog.csv`; completed core and Iterative scenes are reused independently. A failed or cancelled render preserves preparation and earlier exports. Incomplete star-removal outputs are rerun. Older prepared folders can be opened directly when they contain a compatible core scene plus the saved layers/catalogue needed for Iterative, or a current `scene_iterative.json`. Incompatible old extraction needs **Recalculate stars** with the saved layers/catalogue, or preparation in a new project folder. Historical Natural/Dynamic files and all exports remain on disk.
 
 ## Versions
 
-The current release is **0.10.1**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.10.1_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.11.0**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.11.0_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 

@@ -1,5 +1,11 @@
 # Gaia Flythrough releases
 
+## 0.11.0 — 2026-10-17
+
+- Add Recalculate stars beside the moving-star limit in Advanced settings. Refit from saved image/starless layers, WCS and complete Gaia cache without repeating solving, AI removal or downloads. Show missing inputs and prompt recalculation for a higher preparation limit. Rendering remains a separate action.
+- Save complete calculation revisions under calculations/v<version>_<index>; atomically select the new revision only after success. Preserve original analysis, earlier revisions and exports on success, cancellation or failure. Load/resume/render the active revision and record it in render metadata.
+- Add actual synthetic cache-to-recalculation/render coverage, cancellation/failure preservation, repeated revision retention, missing inputs, path validation and GUI action checks. Minor workflow feature; numerical algorithms and extraction schemas remain unchanged.
+
 ## 0.10.1 — 2026-10-17
 
 - Raise the default and supported maximum moving-star limit to 50,000; desktop Advanced settings accepts 100–50,000, and the core API/CLI accepts 1–50,000. Share the upper boundary across validation, UI and CLI help.

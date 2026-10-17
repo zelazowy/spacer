@@ -386,6 +386,28 @@ class LauncherTests(unittest.TestCase):
             w.render_variant()
             self.assertEqual(launch.call_args.args[2].max_stars,50000)
 
+    def test_recalculate_action_requires_saved_layers_and_forwards_limit(self):
+        w=self.window
+        self.assertTrue(w.recalculation.isHidden())
+        saved=self.folder/'recalculate';saved.mkdir()
+        (saved/'project.json').write_text(json.dumps(dict(stage='ready',max_stars=5000)))
+        (saved/'scene_iterative.json').write_text(json.dumps(dict(stars=[],motion_selection=dict(limit=5000))))
+        w.use_prepared(saved)
+        self.assertFalse(w.recalculate_button.isEnabled())
+        self.assertIn('catalog.csv',w.calculation_hint.text())
+        for name in ('photo.png','starless.png','source_wcs.fits','catalog.csv'): (saved/name).touch()
+        w.star_limit.setValue(50000)
+        self.assertTrue(w.recalculate_button.isEnabled());self.assertIn('higher limit',w.calculation_hint.text())
+        with patch.object(w,'launch') as launch:
+            w.recalculate_button.click()
+            options=launch.call_args.args[2]
+            self.assertTrue(options.recalculate);self.assertEqual(options.max_stars,50000)
+            self.assertEqual(options.output,str(saved.resolve()))
+        w.worker=SimpleNamespace(options=options)
+        w.completed(str(saved))
+        self.assertIn('calculations updated',w.status.text());self.assertEqual(w.progress_bar.value(),1000)
+        w.worker=None
+
     def test_header_height_and_spacing_survive_resizing_and_state_changes(self):
         from PIL import Image
         w=self.window

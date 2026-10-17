@@ -155,7 +155,7 @@ neighbours must also be supplied; their fitted light stays stationary later.
     return layers,background,history
 
 
-def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,stage_progress=None):
+def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,stage_progress=None,report_folder=None):
     """Refine isolated catalogue-anchored bright groups in a Natural field.
 
     Close bright-bright overlaps and poorly fitted groups are deferred. All
@@ -265,5 +265,5 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
         label='Experimental iterative halo/spike separation; uncertain bright groups remain stationary')
     if 'motion_selection' in scene:
         result['motion_selection']=dict(scene['motion_selection'],moving_stars=len(stars))
-    (folder/'iterative_report.json').write_text(json.dumps(report,indent=2))
+    (Path(report_folder or folder)/'iterative_report.json').write_text(json.dumps(report,indent=2))
     return result,background

@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import threading
+import tempfile
 
 import numpy as np
 from PIL import Image
@@ -113,10 +114,60 @@ def save_project(out, **changes):
     temporary.replace(out/'project.json')
 
 
+def calculation_folder(out):
+    """Resolve the active revision; never silently fall back to older analysis."""
+    out=Path(out).resolve()
+    relative=read_project(out).get('calculation_path')
+    if not relative: return out
+    folder=(out/relative).resolve()
+    if not folder.is_relative_to(out/'calculations') or not (folder/'scene_iterative.json').is_file():
+        raise ValueError('The active star calculations are missing or invalid. Recalculate stars from the saved layers.')
+    return folder
+
+
+def recalculation_missing(out):
+    return [name for name in ('photo.png','starless.png','source_wcs.fits','catalog.csv') if not (Path(out)/name).is_file()]
+
+
+def recalculate_project(out,options,progress=lambda message:None,cancel=None):
+    """Publish a complete calculation revision, keeping old analysis on failure."""
+    out=Path(out).resolve();cancel=cancel or threading.Event()
+    missing=recalculation_missing(out)
+    if missing: raise ValueError('Recalculation needs saved project files: '+', '.join(missing))
+    max_stars=moving_star_limit(options.max_stars)
+    state=read_project(out);header=fits.getheader(out/'source_wcs.fits')
+    args=argparse.Namespace(photo=out/'photo.png',starless=out/'starless.png',wcs=out/'source_wcs.fits',
+        catalog_path=out/'catalog.csv',epoch=header.get('DATE-OBS') or state.get('epoch'),
+        magnitude=18,threshold=.008,match_pixels=3,max_uncertainty=.2,raster_bottom_up=False,
+        max_stars=max_stars,progress=progress,cancel_event=cancel,stage_progress=getattr(options,'stage_progress',None))
+    progress(f'Recalculating stars with limit {max_stars:,}. Reusing saved image, starless layer and Gaia catalogue.')
+    with tempfile.TemporaryDirectory(prefix='.recalculate-',dir=out) as temporary:
+        work=Path(temporary)
+        scene,background=prepare(args,work)
+        if state.get('date_info'): scene=dict(scene,date_info=state['date_info'])
+        if cancel.is_set(): raise InterruptedError('Star recalculation cancelled. Previous calculations are kept.')
+        (work/'scene.json').write_text(json.dumps(scene,allow_nan=False))
+        from iterative_deblend import refine_prepared_field
+        scene,background=refine_prepared_field(scene,out,progress,cancel,
+            stage_progress=getattr(options,'stage_progress',None),report_folder=work)
+        scene,_=limit_scene_stars(scene,max_stars,progress,cancel,getattr(options,'stage_progress',None))
+        if cancel.is_set(): raise InterruptedError('Star recalculation cancelled. Previous calculations are kept.')
+        (work/'scene_iterative.json').write_text(json.dumps(scene,allow_nan=False))
+        history=out/'calculations';history.mkdir(exist_ok=True)
+        index=1
+        while (history/f'v{VERSION}_{index:03d}').exists(): index+=1
+        revision=history/f'v{VERSION}_{index:03d}'
+        work.rename(revision)
+        save_project(out,calculation_path=str(revision.relative_to(out)),max_stars=max_stars,stage='ready')
+    progress(f'Star calculations updated: {len(scene["stars"]):,} moving stars. Ready to render.')
+    return out
+
+
 def resume_project(out, options, progress=lambda message:None, cancel=None):
     """Resume the saved snapshot; never consult the currently open Siril image."""
     out=Path(out)
-    if (out/'scene.json').exists() or (out/'scene_iterative.json').exists() or (out/'preview.html').exists():
+    active=calculation_folder(out)
+    if (active/'scene.json').exists() or (active/'scene_iterative.json').exists() or (out/'preview.html').exists():
         return render_prepared(out,options,progress,cancel)
     state=read_project(out)
     if not state or not (out/'source_wcs.fits').exists():
@@ -215,7 +266,7 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
 
 
 def load_prepared_scene(out):
-    out=Path(out)
+    out=calculation_folder(out)
     path=out/'scene.json'
     if path.exists(): return json.loads(path.read_text())
     legacy=out/'preview.html'
@@ -235,14 +286,15 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     cancel=cancel or threading.Event()
     mode='iterative'
     max_stars=moving_star_limit(getattr(options,'max_stars',read_project(out).get('max_stars',DEFAULT_MAX_STARS)))
+    active=calculation_folder(out)
     save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,max_stars=max_stars)
     if scene is None:
         if mode=='iterative':
-            path=out/'scene_iterative.json'
+            path=active/'scene_iterative.json'
             if path.exists(): scene=json.loads(path.read_text())
             if scene is None or scene.get('iterative_revision',0)<2:
                 if path.exists():
-                    backup=out/'scene_iterative_before_spike_refinement.json'
+                    backup=active/'scene_iterative_before_spike_refinement.json'
                     if not backup.exists(): backup.write_text(path.read_text())
                     progress('Updating cached spike separation using the saved field.')
                 natural=load_prepared_scene(out)
@@ -278,6 +330,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     (out/(stem+'.json')).write_text(json.dumps(dict(tool_version=VERSION,created_at=scene['render_created_at'],render_name=stem,
         field_version=scene.get('prepared_with_version','unversioned'),field_created_at=scene.get('prepared_at'),date_info=scene.get('date_info'),
         extraction_version=scene.get('extraction_version'),iterative_revision=scene.get('iterative_revision'),
+        calculation_path=read_project(out).get('calculation_path'),
         duration_seconds=args.seconds,fps=24,max_stars=max_stars,motion_selection=scene.get('motion_selection'),iterative_limits=scene.get('iterative_limits'),
         final_zoom=args.zoom,travel_pc=80,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
     render_video(scene,background,args,out/(stem+'.mp4'))
