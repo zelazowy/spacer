@@ -1,5 +1,11 @@
 # Gaia Flythrough releases
 
+## 0.11.1 — 2026-10-17
+
+- Size Advanced settings for its visible contents, including wrapping and solver controls, within the available screen height. Keep scrolling as a smaller-screen fallback.
+- Start project-folder Browse in the current directory, or the nearest existing parent for a new path. Apply current-path defaults to executable and ASTAP database pickers too.
+- Add folder-start and dialog-fit checks and inspect solved/unsolved/prepared settings. Corrective interface patch.
+
 ## 0.11.0 — 2026-10-17
 
 - Add Recalculate stars beside the moving-star limit in Advanced settings. Refit from saved image/starless layers, WCS and complete Gaia cache without repeating solving, AI removal or downloads. Show missing inputs and prompt recalculation for a higher preparation limit. Rendering remains a separate action.

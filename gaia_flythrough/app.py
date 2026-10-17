@@ -169,7 +169,7 @@ class FlythroughWindow(QWidget):
         database_layout.addWidget(self.database,1);browse_database=QPushButton('Browse…')
         browse_database.setSizePolicy(QSizePolicy.Policy.Fixed,QSizePolicy.Policy.Fixed);database_layout.addWidget(browse_database)
         def choose_database():
-            selected=QFileDialog.getExistingDirectory(self,'Choose ASTAP star database folder')
+            selected=QFileDialog.getExistingDirectory(self,'Choose ASTAP star database folder',self.picker_directory(self.database.text()))
             if selected: self.database.setText(selected)
         browse_database.clicked.connect(choose_database);solver_form.addRow('Star database',database_row)
         self.fov=QDoubleSpinBox();self.fov.setRange(0,180);self.fov.setDecimals(3);self.fov.setSuffix('°');self.fov.setSpecialValueText('Auto')
@@ -334,13 +334,14 @@ class FlythroughWindow(QWidget):
         content.hide()
         if title=='Advanced settings':
             toggle.setText('Advanced settings…');toggle.setArrowType(Qt.ArrowType.NoArrow)
-            dialog=QDialog(self);dialog.setWindowTitle('Advanced settings');dialog.resize(700,440)
+            dialog=QDialog(self);dialog.setWindowTitle('Advanced settings');dialog.resize(760,600)
             body=QVBoxLayout(dialog)
             scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QScrollArea.Shape.NoFrame)
             scroll.setWidget(content);content.show();body.addWidget(scroll)
             buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
             buttons.rejected.connect(dialog.close);body.addWidget(buttons)
-            toggle.toggled.connect(lambda opened: dialog.show() if opened else dialog.hide())
+            self.advanced_scroll=scroll
+            toggle.toggled.connect(self.show_advanced)
             dialog.finished.connect(lambda _: toggle.setChecked(False))
             self.advanced_dialog=dialog
             layout.addWidget(toggle)
@@ -352,6 +353,20 @@ class FlythroughWindow(QWidget):
         toggle.toggled.connect(changed)
         layout.addWidget(toggle,alignment=Qt.AlignmentFlag.AlignLeft);layout.addWidget(content)
         return toggle
+
+    def show_advanced(self,opened):
+        dialog=self.advanced_dialog
+        if not opened: dialog.hide();return
+        available=self.screen().availableGeometry()
+        width=min(max(760,dialog.width()),available.width()-48)
+        self.advanced.ensurePolished()
+        content_width=width-dialog.layout().contentsMargins().left()-dialog.layout().contentsMargins().right()-4
+        form=self.advanced.layout()
+        content_height=form.totalHeightForWidth(content_width) if form.hasHeightForWidth() else form.sizeHint().height()
+        margins=dialog.layout().contentsMargins()
+        chrome=margins.top()+margins.bottom()+dialog.layout().spacing()+dialog.findChild(QDialogButtonBox).sizeHint().height()+8
+        dialog.resize(width,min(content_height+chrome,available.height()-64))
+        dialog.show();dialog.raise_();dialog.activateWindow()
 
     def zoom_percent(self):
         # Keep the existing project/export contract while presenting direct scale.
@@ -488,7 +503,7 @@ class FlythroughWindow(QWidget):
         button.setSizePolicy(QSizePolicy.Policy.Fixed,QSizePolicy.Policy.Fixed);row.addWidget(button)
         def browse():
             if directory:
-                selected=QFileDialog.getExistingDirectory(self,'Choose a project folder')
+                selected=QFileDialog.getExistingDirectory(self,'Choose a project folder',self.picker_directory(field.text()))
                 if selected:
                     folder=Path(selected)
                     if any((folder/name).is_file() for name in ('project.json','scene.json','preview.html','scene_iterative.json')):
@@ -497,10 +512,20 @@ class FlythroughWindow(QWidget):
                     else:
                         field.setText(str(folder));self.refresh_project()
             else:
-                selected,_=QFileDialog.getOpenFileName(self,'Choose executable')
+                selected,_=QFileDialog.getOpenFileName(self,'Choose executable',self.picker_directory(field.text()))
                 if selected: field.setText(selected)
         button.clicked.connect(browse)
         return host
+
+    def picker_directory(self,value):
+        """Start at the current path, or its nearest existing parent."""
+        if value.strip():
+            path=Path(value).expanduser().resolve()
+            while not path.is_dir() and path!=path.parent: path=path.parent
+            return str(path)
+        source=self.image_filename()
+        if source: return str(Path(source).expanduser().resolve().parent)
+        return self.preferences.directory('project_directory')
     def choose_engine(self,*_):
         self.executable.setText(find_tool('rc-astro' if self.engine.currentIndex()==0 else 'starnet2'))
     def begin(self):

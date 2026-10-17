@@ -408,6 +408,22 @@ class LauncherTests(unittest.TestCase):
         self.assertIn('calculations updated',w.status.text());self.assertEqual(w.progress_bar.value(),1000)
         w.worker=None
 
+    def test_project_picker_starts_at_current_folder_or_existing_parent(self):
+        from PyQt6.QtWidgets import QPushButton
+        w=self.window;current=self.folder/'current';current.mkdir()
+        row=w.path_row(w.output,True);button=row.findChild(QPushButton)
+        for value,expected in ((str(current),current),(str(current/'new'/'project'),current)):
+            w.output.setText(value)
+            with patch.object(self.launcher.QFileDialog,'getExistingDirectory',return_value='') as picker:
+                button.click()
+                self.assertEqual(Path(picker.call_args.args[2]),expected.resolve())
+
+    def test_advanced_dialog_fits_contents_when_screen_has_space(self):
+        w=self.window
+        w.advanced_toggle.setChecked(True);self.app.processEvents()
+        self.assertLessEqual(w.advanced_dialog.height(),w.screen().availableGeometry().height()-64)
+        self.assertEqual(w.advanced_scroll.verticalScrollBar().maximum(),0)
+
     def test_header_height_and_spacing_survive_resizing_and_state_changes(self):
         from PIL import Image
         w=self.window
