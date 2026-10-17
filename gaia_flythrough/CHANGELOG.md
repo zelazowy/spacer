@@ -1,5 +1,13 @@
 # Gaia Flythrough releases
 
+## 0.11.2 — 2026-10-17
+
+- Audit new/unsolved/solved/saved/busy/cancelled interface states and normal/wide settings. Hide first-preparation controls once they no longer apply; reset the 50,000 default for new inputs while preserving saved project choices.
+- Restore earlier preview/video links after failure or cancellation, refresh prepared counts after successful rendering and offer recalculation when an active revision is missing.
+- Accept empty output folders selected in Browse for new preparation/solving, while rejecting unrelated nonempty folders.
+- Keep the main window within screen height, with scrolling for tall states; preserve header and progress geometry. Record findings and verification limits in INTERFACE_AUDIT.md.
+- Validate 93 tests and isolated real M8 recalculation: 10,491 movers from 12,215 candidates in 81 s at the 50,000 limit; source project/cache hashes unchanged. Corrective usability patch.
+
 ## 0.11.1 — 2026-10-17
 
 - Size Advanced settings for its visible contents, including wrapping and solver controls, within the available screen height. Keep scrolling as a smaller-screen fallback.

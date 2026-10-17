@@ -140,6 +140,7 @@ class LauncherTests(unittest.TestCase):
                 self.assertTrue(w.start.isEnabled())
                 self.assertEqual(w.stretch.count(),1)
                 w.executable.setText('/bin/sh');w.ffmpeg.setText('/bin/sh');w.epoch.setText('2026-10-15')
+                Path(w.output.text()).mkdir(parents=True) # A folder chosen via Browse already exists.
                 with patch.object(w,'launch') as launch:
                     w.begin()
                     launch.assert_called_once()
@@ -295,6 +296,9 @@ class LauncherTests(unittest.TestCase):
         w.worker=SimpleNamespace(options=SimpleNamespace(result_stem='flight',solve=False),isRunning=lambda:False)
         try:
             w.prepared=self.folder.resolve();w.output.setText(str(w.prepared))
+            (self.folder/'project.json').write_text(json.dumps(dict(stage='ready',last_render='flight')))
+            (self.folder/'scene_iterative.json').write_text('{}')
+            for suffix in ('.html','.mp4'): (self.folder/('flight'+suffix)).touch()
             w.completed(str(self.folder))
             self.assertEqual(w.progress_bar.value(),1000)
             w.finished()
@@ -423,6 +427,50 @@ class LauncherTests(unittest.TestCase):
         w.advanced_toggle.setChecked(True);self.app.processEvents()
         self.assertLessEqual(w.advanced_dialog.height(),w.screen().availableGeometry().height()-64)
         self.assertEqual(w.advanced_scroll.verticalScrollBar().maximum(),0)
+
+    def test_new_image_uses_default_limit_after_opening_limited_project(self):
+        from PIL import Image
+        saved=self.folder/'old-limit';saved.mkdir()
+        (saved/'project.json').write_text(json.dumps(dict(stage='ready',max_stars=5000)))
+        (saved/'scene_iterative.json').write_text('{}')
+        image=self.folder/'new.jpg';Image.new('RGB',(16,12)).save(image)
+        w=self.launcher.FlythroughWindow()
+        try:
+            w.use_prepared(saved);self.assertEqual(w.star_limit.value(),5000)
+            self.assertTrue(w.preparation.isHidden())
+            w.use_image(image)
+            self.assertEqual(w.star_limit.value(),50000);self.assertFalse(w.preparation.isHidden())
+        finally: w.close()
+
+    def test_cancel_restores_previous_export_links(self):
+        saved=self.folder/'with-export';saved.mkdir()
+        (saved/'project.json').write_text(json.dumps(dict(stage='ready',last_render='previous')))
+        (saved/'scene_iterative.json').write_text('{}')
+        for suffix in ('.html','.mp4'): (saved/('previous'+suffix)).touch()
+        w=self.window;w.use_prepared(saved)
+        with patch.object(self.launcher,'Worker') as worker:
+            worker.return_value.cancel=threading.Event()
+            w.launch(None,None,SimpleNamespace(output=str(saved),recalculate=True))
+            self.assertFalse(w.preview.isEnabled());self.assertFalse(w.video.isEnabled())
+            w.worker.cancel.set();w.failed('cancelled');w.finished()
+            self.assertTrue(w.preview.isEnabled());self.assertTrue(w.video.isEnabled())
+            self.assertEqual(w.result_stem,'previous');w.worker=None
+
+    def test_details_stays_on_screen_with_scroll_fallback(self):
+        w=self.window
+        w.details_toggle.setChecked(True);self.app.processEvents()
+        self.assertLessEqual(w.height(),w.screen().availableGeometry().height()-64)
+        w.main_scroll.verticalScrollBar().setValue(w.main_scroll.verticalScrollBar().maximum())
+        self.assertTrue(w.log.isVisible())
+
+    def test_missing_active_revision_offers_recalculation_instead_of_old_render(self):
+        saved=self.folder/'missing-revision';saved.mkdir()
+        (saved/'project.json').write_text(json.dumps(dict(stage='ready',calculation_path='calculations/missing')))
+        (saved/'scene_iterative.json').write_text('{}')
+        for name in ('photo.png','starless.png','source_wcs.fits','catalog.csv'): (saved/name).touch()
+        w=self.window;w.use_prepared(saved)
+        self.assertFalse(w.start.isEnabled());self.assertTrue(w.recalculate_button.isEnabled())
+        self.assertIn('calculations are missing',w.status.text())
 
     def test_header_height_and_spacing_survive_resizing_and_state_changes(self):
         from PIL import Image

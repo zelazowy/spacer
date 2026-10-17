@@ -76,7 +76,10 @@ class FlythroughWindow(QWidget):
         self.setWindowTitle(f'SPACER — v{VERSION}')
         self.resize(680,560)
         self.setMinimumWidth(600)
-        layout=QVBoxLayout(self);layout.setContentsMargins(24,20,24,20);layout.setSpacing(16)
+        outer=QVBoxLayout(self);outer.setContentsMargins(0,0,0,0)
+        self.main_scroll=QScrollArea();self.main_scroll.setWidgetResizable(True);self.main_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.main_content=QWidget();self.main_scroll.setWidget(self.main_content);outer.addWidget(self.main_scroll)
+        layout=QVBoxLayout(self.main_content);layout.setContentsMargins(24,20,24,20);layout.setSpacing(16)
         self.header=QWidget();header_layout=QVBoxLayout(self.header)
         header_layout.setContentsMargins(0,0,0,0);header_layout.setSpacing(6)
         self.heading=QLabel('SPACER');font=self.heading.font();font.setPointSize(24);font.setBold(True);self.heading.setFont(font)
@@ -222,7 +225,7 @@ class FlythroughWindow(QWidget):
         self.output.editingFinished.connect(self.refresh_project)
         self.refresh_project()
         if self.siril: self.detect_siril_date()
-        if self.image_filename() and Path(self.output.text()).exists():
+        if self.image_filename() and Path(self.output.text()).is_dir() and any(Path(self.output.text()).iterdir()):
             try: self.use_prepared(Path(self.output.text()))
             except (ValueError,OSError) as exc: self.status.setText(str(exc))
 
@@ -253,10 +256,12 @@ class FlythroughWindow(QWidget):
         # Validate the header before changing the selected project.
         if source.has_coordinates: source.header()
         self.file_source=source;self.prepared=None;self.target.clear();self.set_date_info(source.date_info())
+        self.star_limit.setValue(DEFAULT_MAX_STARS)
+        self.prepared_star_limit=None;self.prepared_star_count=None
         self.output.setText(str(source.path.parent/'flythrough'/source.path.stem))
         self.refresh_project()
         self.remember_image()
-        if Path(self.output.text()).exists(): self.use_prepared(Path(self.output.text()))
+        if Path(self.output.text()).is_dir() and any(Path(self.output.text()).iterdir()): self.use_prepared(Path(self.output.text()))
 
     def set_date_info(self,info):
         self.auto_date_info=info
@@ -349,10 +354,15 @@ class FlythroughWindow(QWidget):
         def changed(opened):
             content.setVisible(opened)
             toggle.setArrowType(Qt.ArrowType.DownArrow if opened else Qt.ArrowType.RightArrow)
-            self.resize(self.width(),self.sizeHint().height())
+            self.fit_main_window()
         toggle.toggled.connect(changed)
         layout.addWidget(toggle,alignment=Qt.AlignmentFlag.AlignLeft);layout.addWidget(content)
         return toggle
+
+    def fit_main_window(self):
+        form=self.main_content.layout()
+        height=form.totalHeightForWidth(self.width()) if form.hasHeightForWidth() else form.sizeHint().height()
+        self.resize(self.width(),min(height+2,self.screen().availableGeometry().height()-64))
 
     def show_advanced(self,opened):
         dialog=self.advanced_dialog
@@ -377,12 +387,15 @@ class FlythroughWindow(QWidget):
         saved=any((folder/name).is_file() for name in ('project.json','scene.json','scene_iterative.json','preview.html'))
         self.project_title.setText(folder.name if saved else Path(self.image_filename() or ('Unsaved image' if self.siril else 'No image selected')).name)
         self.project_title.setToolTip(str(folder))
-        ready=(calculation_folder(folder)/'scene_iterative.json').is_file()
+        calculation_error=None
+        try: ready=(calculation_folder(folder)/'scene_iterative.json').is_file()
+        except ValueError as exc: ready=False;calculation_error=str(exc)
         new_hint=('Current Siril image · uses current pixels. For a linear image, choose autostretch in Advanced settings.' if self.siril else
             ('File image · uses already-stretched pixels.' if self.file_source else 'Open a finished image, or return to a saved project.'))
         self.project_hint.setText(('Saved image · ready to render; analysis is reused.' if ready else 'Saved image · missing preparation steps will resume.') if saved else new_hint)
         self.project_hint.setToolTip(str(folder))
         self.preparation.setEnabled(not saved or read_project(folder).get('stage')=='solved')
+        self.preparation.setVisible(self.preparation.isEnabled())
         self.recalculation.setVisible(saved)
         self.update_calculation_hint()
         self.start.setText(('Render flight' if ready else 'Resume and render') if saved else 'Prepare and render')
@@ -404,6 +417,10 @@ class FlythroughWindow(QWidget):
             self.coordinates_hint.setText('Sky position is not saved in this image.\nSolve it with ASTAP to prepare your flight.')
             self.status.setText('Solve sky position above. ASTAP settings are under Advanced settings.')
         self.start.setEnabled((saved or bool(self.siril or self.file_source)) and not missing)
+        if calculation_error:
+            self.project_hint.setText('Saved image · star calculations need rebuilding.')
+            self.status.setText(calculation_error);self.start.setEnabled(False)
+        self.fit_main_window()
 
     def update_calculation_hint(self,*_):
         if not hasattr(self,'output'): return
@@ -442,6 +459,8 @@ class FlythroughWindow(QWidget):
             QMessageBox.information(self,'Choose a new folder','Choose a folder name that does not exist yet. Use Open project to return to an existing project.')
             return
         self.prepared=None;self.output.setText(str(folder));self.refresh_project();self.detect_siril_date()
+        self.star_limit.setValue(DEFAULT_MAX_STARS)
+        self.prepared_star_limit=None;self.prepared_star_count=None
         self.advanced_toggle.setChecked(True)
 
     def append_log(self,message,detail=False):
@@ -533,7 +552,7 @@ class FlythroughWindow(QWidget):
             import os
             if not self.output.text().strip(): raise ValueError('Choose a project folder in Advanced settings.')
             out=Path(self.output.text()).expanduser()
-            if out.exists():
+            if out.exists() and any(out.iterdir()):
                 self.use_prepared(out,restore=False)
                 self.render_variant()
                 return
@@ -617,12 +636,13 @@ class FlythroughWindow(QWidget):
     def use_prepared(self,folder,restore=True):
         folder=Path(folder).expanduser().resolve()
         state=read_project(folder)
-        active=calculation_folder(folder)
-        if (active/'scene_iterative.json').exists():
+        try: active=calculation_folder(folder)
+        except ValueError: active=None  # Keep the cached-layer recalculation action available.
+        if active is not None and (active/'scene_iterative.json').exists():
             import json
             saved_scene=json.loads((active/'scene_iterative.json').read_text())
         else:
-            saved_scene=load_prepared_scene(folder) if (folder/'scene.json').exists() or (folder/'preview.html').exists() else {}
+            saved_scene=load_prepared_scene(folder) if active is not None and ((folder/'scene.json').exists() or (folder/'preview.html').exists()) else {}
         if not saved_scene and not state and not (folder/'scene_iterative.json').exists():
             raise ValueError('This folder is not a SPACER project.')
         if restore:
@@ -643,10 +663,7 @@ class FlythroughWindow(QWidget):
             solver=state.get('astrometry',{})
             if solver.get('executable'): self.astap.setText(solver['executable'])
             if solver.get('database'): self.database.setText(solver['database'])
-        self.result_stem=state.get('last_render')
-        self.result=folder if self.result_stem else None
-        self.preview.setEnabled(bool(self.result and (folder/(self.result_stem+'.html')).exists()))
-        self.video.setEnabled(bool(self.result and (folder/(self.result_stem+'.mp4')).exists()))
+        self.restore_export_links(folder)
         if folder!=self.prepared:
             self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()
         self.prepared_star_limit=saved_scene.get('motion_selection',{}).get('limit')
@@ -671,10 +688,17 @@ class FlythroughWindow(QWidget):
             self.report_progress('Star calculations updated. Choose Render flight to create a new video.')
             return
         self.render_succeeded=True
+        self.use_prepared(Path(path),restore=False)
         self.progress_bar.setRange(0,1000);self.progress_bar.setValue(1000);self.progress_bar.setTextVisible(True)
         self.result=Path(path);self.result_stem=self.worker.options.result_stem
         self.report_progress('Flight ready. Open the preview or video.');self.append_log(str(self.result/(self.result_stem+'.mp4')))
         self.preview.setEnabled(True);self.video.setEnabled(True)
+
+    def restore_export_links(self,folder):
+        self.result_stem=read_project(folder).get('last_render')
+        self.result=folder if self.result_stem else None
+        self.preview.setEnabled(bool(self.result and (folder/(self.result_stem+'.html')).exists()))
+        self.video.setEnabled(bool(self.result and (folder/(self.result_stem+'.mp4')).exists()))
     def failed(self,message):
         if self.worker and self.worker.cancel.is_set():
             self.report_progress('Cancelled. Saved preparation and earlier exports are kept.');return
@@ -690,6 +714,7 @@ class FlythroughWindow(QWidget):
         if self.prepared and (self.prepared/'project.json').is_file(): self.remember_project(self.prepared)
         message=self.status.text()
         self.refresh_project()
+        if self.prepared: self.restore_export_links(self.prepared)
         self.status.setText(message)
     def open_result(self,name):
         if self.result:

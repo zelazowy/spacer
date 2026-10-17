@@ -198,15 +198,15 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
     if not has_solution(header):
         raise ValueError(UNSOLVED_MESSAGE)
     out=Path(options.output).expanduser().resolve()
-    if out.exists():
+    if out.exists() and any(out.iterdir()):
         if not read_project(out) or not (out/'source_wcs.fits').exists():
             raise ValueError('Existing folder is not a resumable SPACER project.')
         with fits.open(out/'source_wcs.fits') as saved:
             photo=normalized_pixels(saved[0].data)
             header=saved[0].header.copy()
     validate_field(WCS(header,naxis=2).celestial,photo.shape[2],photo.shape[1])
-    if not out.exists():
-        out.mkdir(parents=True)
+    if not out.exists() or not read_project(out):
+        out.mkdir(parents=True,exist_ok=True)
         save_project(out, created_with_version=VERSION, created_at=created_stamp(),
             source=str(options.source), engine=options.engine, executable=options.executable,
             epoch=str(options.epoch or header.get('DATE-OBS','')), stage='snapshot')

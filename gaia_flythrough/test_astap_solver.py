@@ -40,6 +40,7 @@ class SolverTests(unittest.TestCase):
         return SimpleNamespace(poll=lambda:0,returncode=0)
 
     def test_success_preserves_photo_and_reopens_without_solver(self):
+        Path(self.options.output).mkdir() # Native folder pickers return existing empty directories.
         with patch('astap_solver.subprocess.Popen',side_effect=self.fake_process):
             out=solve_project(self.options)
         self.assertEqual(self.image.read_bytes(),self.original)
@@ -84,6 +85,7 @@ class SolverTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'timed out'): solve_project(self.options)
         self.assertFalse(Path(self.options.output).exists())
         Path(self.options.output).mkdir()
+        (Path(self.options.output)/'keep.txt').write_text('preserve existing files')
         with patch('astap_solver.subprocess.Popen') as solver:
             with self.assertRaisesRegex(ValueError,'existing projects'): solve_project(self.options)
             solver.assert_not_called()

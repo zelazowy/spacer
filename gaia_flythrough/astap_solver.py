@@ -151,7 +151,7 @@ def solve_project(options,progress=lambda message:None,cancel=None):
     cancel=cancel or threading.Event()
     executable=resolve_astap(options.astap)
     out=Path(options.output).expanduser().resolve()
-    if out.exists(): raise ValueError('Choose a new project folder before solving; existing projects are preserved.')
+    if out.exists() and any(out.iterdir()): raise ValueError('Choose a new or empty project folder before solving; existing projects are preserved.')
     if options.database and not Path(options.database).expanduser().is_dir():
         raise ValueError('ASTAP star database folder does not exist.')
     if not 0<=options.fov<=180 or not 0<options.radius<=180 or not 0<=options.binning<=8:
@@ -270,7 +270,8 @@ def solve_project(options,progress=lambda message:None,cancel=None):
             if astrometry.fullmatch(key) or key in ('CHECKSUM','DATASUM'): del header[key]
         header.update(wcs.to_header(relax=True));header['ROWORDER']='BOTTOM-UP'
         if cancel.is_set(): raise InterruptedError('Plate solving cancelled.')
-        out.mkdir(parents=True,exist_ok=False)
+        if out.exists() and any(out.iterdir()): raise ValueError('The chosen project folder is no longer empty; existing files are preserved.')
+        out.mkdir(parents=True,exist_ok=True)
         temporary=out/'source_wcs.fits.tmp'
         fits.PrimaryHDU(pixels,header).writeto(temporary)
         temporary.replace(out/'source_wcs.fits')

@@ -85,6 +85,7 @@ class PipelineTests(unittest.TestCase):
         for engine in ('StarXTerminator','StarNet'):
             with self.subTest(engine=engine),tempfile.TemporaryDirectory() as folder:
                 out=Path(folder)/'flight'
+                if engine=='StarNet': out.mkdir() # Empty folders selected in Browse are valid new projects.
                 options=SimpleNamespace(engine=engine,executable='/fake/engine',ffmpeg='ffmpeg',
                     output=str(out),epoch='',seconds=30,zoom=15,source='source.tif',stage_progress=lambda *args:None,
                     date_info=dict(value='2026-08-15T00:00:00.000',source='File creation date',approximate=True))
