@@ -6,6 +6,7 @@ The bright-star position and each neighbour's depth remain catalogue anchored.
 import numpy as np
 import json
 from task_progress import StageProgress, Diagnostic
+from density import MAX_ITERATIVE_GROUPS, MAX_GROUP_NEIGHBOURS
 import csv
 import io
 from version import VERSION, created_stamp
@@ -133,6 +134,7 @@ neighbours must also be supplied; their fitted light stays stationary later.
         core_sum=sum(cores,np.zeros_like(data))
         main,angle=bright_psf(np.maximum(data-core_sum,0),primary,excluded)
         for index,(x,y) in enumerate(neighbours):
+            if cancel is not None and cancel.is_set(): raise InterruptedError('Iterative separation cancelled.')
             remainder=np.maximum(data-main-(core_sum-cores[index]),0)
             fitted=fit_core(remainder,x,y,tree)
             new=np.zeros_like(data)
@@ -197,14 +199,18 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
     background=np.asarray(Image.open(io.BytesIO(base64.b64decode(scene['background'].split(',')[1]))),dtype=float)/255
     stars=list(scene['stars']);report=[];accepted_centers=[]
     optical_center=wcs.pixel_to_world((w-1)/2,(h-1)/2)
+    valid=np.flatnonzero(np.isfinite(gx)&np.isfinite(gy))
+    neighbour_tree=cKDTree(np.column_stack([gx[valid],gy[valid]]))
+    fits_started=0
+    progress(f'Iterative limits: {MAX_ITERATIVE_GROUPS} fitted groups, {MAX_GROUP_NEIGHBOURS} neighbours per group; crowded halos stay in the photograph.')
     groups=StageProgress('Refining Iterative groups',len(candidates),stage_progress,progress,cancel)
     for step,primary_index in enumerate(groups.track(candidates)):
         if cancel is not None and cancel.is_set(): raise InterruptedError('Iterative separation cancelled.')
         x,y=float(gx[primary_index]),float(gy[primary_index]);radius=160
         source_id=rows[primary_index]['source_id']
         progress(Diagnostic(f'Iterative group {step+1}/{len(candidates)}: Gaia {source_id}'))
-        separation=np.hypot(gx-x,gy-y)
-        if np.any((separation<5)&(np.arange(len(rows))!=primary_index)):
+        close=valid[neighbour_tree.query_ball_point([x,y],5)]
+        if any(j!=primary_index and np.hypot(gx[j]-x,gy[j]-y)<5 for j in close):
             report.append(dict(source_id=source_id,status='deferred_unresolved_catalogue_companion'));continue
         if any(j!=primary_index and np.hypot(gx[j]-x,gy[j]-y)<radius for j in candidates):
             report.append(dict(source_id=source_id,status='deferred_bright_bright_overlap'));continue
@@ -215,9 +221,15 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
         yy,xx=np.mgrid[sy,sx]
         weights=residual[sy,sx].max(axis=2)*np.exp(-((xx-x)**2+(yy-y)**2)/8)
         x=float((xx*weights).sum()/weights.sum());y=float((yy*weights).sum()/weights.sum())
-        indices=[i for i in range(len(rows)) if i!=primary_index
+        nearby=np.sort(valid[neighbour_tree.query_ball_point([left+radius,top+radius],np.sqrt(2)*(radius-10))])
+        indices=[i for i in nearby if i!=primary_index
             and left+10<gx[i]<left+2*radius-10 and top+10<gy[i]<top+2*radius-10
             and np.hypot(gx[i]-x,gy[i]-y)>5]
+        if len(indices)>MAX_GROUP_NEIGHBOURS:
+            report.append(dict(source_id=source_id,status='deferred_dense_group',catalogue_neighbours=len(indices),neighbour_limit=MAX_GROUP_NEIGHBOURS));continue
+        if fits_started>=MAX_ITERATIVE_GROUPS:
+            report.append(dict(source_id=source_id,status='deferred_group_budget',group_limit=MAX_ITERATIVE_GROUPS));continue
+        fits_started+=1
         positions=[(float(gx[i]-left),float(gy[i]-top)) for i in indices]
         layers,_,history=deblend_group(residual[sy,sx].astype(np.float32),(x-left,y-top),
             positions,fit_compact_sprite,iterations=20,cancel=cancel)
@@ -249,6 +261,9 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
             analysed_catalogue_sources=len(indices)+1,recovered_sources=recovered))
     StageProgress('Saving Iterative field',-1,stage_progress,progress,cancel)
     result=dict(scene,stars=stars,background=png_data(background),extraction_version=6,iterative_revision=2,prepared_with_version=VERSION,prepared_at=created_stamp(),mode='iterative',
+        iterative_limits=dict(max_fitted_groups=MAX_ITERATIVE_GROUPS,max_neighbours=MAX_GROUP_NEIGHBOURS,fitted_groups=fits_started),
         label='Experimental iterative halo/spike separation; uncertain bright groups remain stationary')
+    if 'motion_selection' in scene:
+        result['motion_selection']=dict(scene['motion_selection'],moving_stars=len(stars))
     (folder/'iterative_report.json').write_text(json.dumps(report,indent=2))
     return result,background

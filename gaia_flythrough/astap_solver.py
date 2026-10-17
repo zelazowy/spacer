@@ -22,6 +22,7 @@ from siril_pipeline import has_solution, save_project
 from version import VERSION, created_stamp
 from photo_date import stamp_date, date_info
 from task_progress import Diagnostic
+from density import DEFAULT_MAX_STARS
 
 
 def find_astap():
@@ -276,7 +277,7 @@ def solve_project(options,progress=lambda message:None,cancel=None):
         (out/'astap.log').write_text(output)
         save_project(out,created_with_version=VERSION,created_at=created_stamp(),stage='solved',
             source=str(source.path),engine=options.engine,executable=options.executable,epoch=str(header.get('DATE-OBS','')),
-            seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,date_info=info,
+            seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,date_info=info,max_stars=getattr(options,'max_stars',DEFAULT_MAX_STARS),
             astrometry=dict(solver='ASTAP',tool_version=VERSION,solved_at=created_stamp(),executable=str(executable),
                 database=options.database,target=options.target,fov=options.fov,radius=options.radius,binning=options.binning,
                 strategy=strategy,maximum_stars=stars,attempts=attempts))

@@ -372,6 +372,19 @@ class LauncherTests(unittest.TestCase):
             self.assertIn('JPEG EXIF',w.project_hint.text());self.assertEqual(w.epoch.text(),'2026-07-17')
         finally: w.close()
 
+    def test_motion_limit_is_editable_for_saved_fields_and_restored(self):
+        import json
+        saved=self.folder/'limited';saved.mkdir()
+        (saved/'scene_iterative.json').write_text('{}')
+        (saved/'project.json').write_text(json.dumps(dict(stage='ready',max_stars=2500)))
+        w=self.window;w.use_prepared(saved)
+        self.assertEqual(w.star_limit.value(),2500)
+        self.assertFalse(w.preparation.isEnabled());self.assertTrue(w.star_limit.isEnabled())
+        w.star_limit.setValue(1000)
+        with patch.object(w,'launch') as launch:
+            w.render_variant()
+            self.assertEqual(launch.call_args.args[2].max_stars,1000)
+
     def test_header_height_and_spacing_survive_resizing_and_state_changes(self):
         from PIL import Image
         w=self.window

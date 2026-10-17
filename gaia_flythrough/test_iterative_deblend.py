@@ -63,15 +63,27 @@ class IterativeSeparationTests(unittest.TestCase):
                 sky=wcs.pixel_to_world(x,height-1-y)
                 rows.append(dict(source_id=str(i),ra=sky.ra.deg,dec=sky.dec.deg,pmra=0,pmdec=0,
                     r_med_geo=200,r_lo_geo=190,r_hi_geo=210,ruwe=1,phot_g_mean_mag=10))
+            faint=wcs.pixel_to_world(912,height-1-250)
+            rows.append(dict(rows[-1],source_id='uncertain-neighbour',ra=faint.ra.deg,dec=faint.dec.deg,ruwe=2,phot_g_mean_mag=15))
             with (folder/'catalog.csv').open('w') as file:
                 writer=csv.DictWriter(file,fieldnames=rows[0]);writer.writeheader();writer.writerows(rows)
             events=[]
             with patch('iterative_deblend.deblend_group',return_value=([],None,[{}])) as fit:
-                refine_prepared_field(dict(stars=[],background=png_data(photo)),folder,
+                result,_=refine_prepared_field(dict(stars=[],background=png_data(photo),motion_selection=dict(limit=5000,moving_stars=99)),folder,
                     stage_progress=lambda *event:events.append(event))
                 fit.assert_called_once()
+                self.assertEqual(len(fit.call_args.args[2]),1) # uncertain neighbour still participates
+                self.assertEqual(result['motion_selection']['moving_stars'],len(result['stars']))
             groups=[e for e in events if e[0]=='Refining Iterative groups']
             self.assertEqual(groups[0][1:3],(0,3));self.assertEqual(groups[-1][1:3],(3,3))
+            import json
+            for setting,status in (('MAX_GROUP_NEIGHBOURS','deferred_dense_group'),('MAX_ITERATIVE_GROUPS','deferred_group_budget')):
+                with patch('iterative_deblend.'+setting,0),patch('iterative_deblend.deblend_group') as fit:
+                    refine_prepared_field(dict(stars=[],background=png_data(photo)),folder)
+                    fit.assert_not_called()
+                report=json.loads((folder/'iterative_report.json').read_text())
+                self.assertIn(status,[entry['status'] for entry in report])
+
 
 
 if __name__=='__main__': unittest.main()

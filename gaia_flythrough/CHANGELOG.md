@@ -1,5 +1,13 @@
 # Gaia Flythrough releases
 
+## 0.10.0 — 2026-10-17
+
+- Default to at most 5,000 moving-star core candidates, prioritizing photographed brightness after full-reference ambiguity and unchanged distance/quality checks. Expose Moving stars (maximum) in Advanced settings and remember it per project. Record selection/budget provenance in scenes and render metadata.
+- Bound Iterative work to 16 attempted fits and 64 neighbours per fit. Defer entire crowded groups rather than discarding their neighbours; use spatial neighbour queries and preserve catalogue fit order. Retain all Gaia reference data and existing catalogue/star-removal caches.
+- Apply lower limits to existing prepared fields without rewriting their saved scenes: restore unselected sprites into the stationary layer using exact PNG light addition. Reapply the cap after Iterative recovery. Higher limits can use only stars available in saved analysis.
+- Validate supplied M8 and Polaris with 5,000-mover views: exact first-frame reconstruction, inspected first/middle/final samples, unchanged source scene/project hashes. M8 guarded refinement took 8.6 s; three-frame Polaris rendering measured 4.3 s vs 22.6 s for its original 33,145-star field. Fresh cached-layer core preparation took 41 s for M8 and 30 s for Polaris, fitting 5,000 candidates in each case. First catalogue downloads remain unchanged.
+- Add capped-fit/ambiguity, reconstruction, cancellation, saved-scene/render preference and dense-group/fit-budget regression coverage. Minor release for deliberate moving-star selection and refinement-work limits; compatible extraction/cache schemas remain unchanged.
+
 ## 0.9.11 — 2026-10-16
 
 - Use indeterminate activity progress while waiting for a live Gaia region query or its unknown-size result download. Hide stale region counters/time estimates during that wait.

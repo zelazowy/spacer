@@ -2,6 +2,7 @@
 from version import VERSION, created_stamp
 from catalog import get_catalog, check_cancel
 from task_progress import StageProgress
+from density import DEFAULT_MAX_STARS, moving_star_limit
 import argparse
 import base64
 import csv
@@ -99,6 +100,7 @@ def prepare(args, output):
     progress=getattr(args,'progress',None) or print
     cancel=getattr(args,'cancel_event',None)
     counter=getattr(args,'stage_progress',None)
+    max_stars=moving_star_limit(getattr(args,'max_stars',DEFAULT_MAX_STARS))
     def stage(label,total=-1):
         return StageProgress(label,total,counter,progress,cancel)
     def counted(items,label):
@@ -201,17 +203,25 @@ def prepare(args, output):
         hits = tree.query_ball_point([x,y], args.match_pixels)
         if len(hits) == 1:
             candidates.setdefault(hits[0], []).append(i)
+    eligible=[]
+    for di,matches in counted(candidates.items(),'Selecting moving star candidates'):
+        if len(matches)!=1: continue
+        row=rows[matches[0]]
+        median,lo,hi=[number(row,key) for key in ('r_med_geo','r_lo_geo','r_hi_geo')]
+        ruwe=number(row,'ruwe')
+        if not (0<lo<=median<=hi and (hi-lo)/(2*median)<=args.max_uncertainty and np.isfinite(ruwe) and ruwe<=1.4): continue
+        eligible.append((di,matches))
+    eligible_count=len(eligible)
+    if eligible_count>max_stars:
+        eligible.sort(key=lambda pair:(-float(brightness[int(round(detections[pair[0]][1])),int(round(detections[pair[0]][0]))]),pair[0]))
+        eligible=eligible[:max_stars]
+    progress(f'Gaia reference: {len(rows):,} sources; fitting up to {len(eligible):,} moving star cores (limit {max_stars:,}).')
     background = photo.copy()
     stars, report, rejected = [], [], []
-    for di,matches in counted(candidates.items(),'Fitting moving star cores'):
-        if len(matches) != 1:
-            continue
+    for di,matches in counted(eligible,'Fitting moving star cores'):
         row = rows[matches[0]]
         median, lo, hi = [number(row,k) for k in ('r_med_geo','r_lo_geo','r_hi_geo')]
         ruwe = number(row,'ruwe')
-        if not (0 < lo <= median <= hi and (hi-lo)/(2*median) <= args.max_uncertainty
-                and np.isfinite(ruwe) and ruwe <= 1.4):
-            continue
         x,y,label,sl = detections[di]
         if dynamic:
             sl=tuple(slice(max(0,s.start-8),min(limit,s.stop+8)) for s,limit in zip(sl,(h,w)))
@@ -248,6 +258,7 @@ def prepare(args, output):
     print(f'{len(stars)} moving stars from {len(detections)} detected peaks; {split_count} connected islands deblended. Others remain in background.')
     return dict(width=w,height=h,background=png_data(background),stars=stars,extraction_version=4,
         prepared_with_version=VERSION,prepared_at=created_stamp(),
+        motion_selection=dict(limit=max_stars,eligible_candidates=eligible_count,fitted_candidates=len(eligible),moving_stars=len(stars),method='brightest photographed peak'),
         mode='dynamic' if dynamic else 'natural',
         label=('Dynamic: Gaia-based patch depth; blended neighbours may share motion' if dynamic else 'Natural: Gaia distances; fitted cores; complex bright stars remain flat')), background
 
@@ -365,6 +376,7 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--travel',type=float,default=30);p.add_argument('--zoom',type=float,default=1.08)
     p.add_argument('--magnitude',type=float,default=18)
+    p.add_argument('--max-stars',type=int,default=DEFAULT_MAX_STARS,help='Maximum moving star candidates to fit (1–20000).')
     p.add_argument('--threshold',type=float,default=.008)
     p.add_argument('--match-pixels',type=float,default=3)
     p.add_argument('--max-uncertainty',type=float,default=.2)
@@ -380,6 +392,7 @@ def main():
         p.error('Provide --photo, --starless and --wcs, or use --demo.')
     if args.travel<0 or not 1<=args.zoom<=1.5 or args.seconds<=0 or args.fps<=0 or args.threshold<=0 or args.match_pixels<=0:
         p.error('Invalid travel, zoom, duration, FPS, threshold or matching radius.')
+    moving_star_limit(args.max_stars)
     args.output.mkdir(parents=True,exist_ok=True)
     if (args.output/'preview.html').exists():
         p.error('Use a new output directory to preserve existing results and catalogue cache.')

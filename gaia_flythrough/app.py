@@ -15,6 +15,7 @@ from astropy.time import Time
 from image_source import FileImageSource
 from astap_solver import solve_project, find_astap, resolve_astap
 from task_progress import Diagnostic
+from density import DEFAULT_MAX_STARS
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QFormLayout,QHBoxLayout,
@@ -143,6 +144,9 @@ class FlythroughWindow(QWidget):
         self.epoch.setToolTip('Gaia positions are corrected for stellar proper motion at this date. A nearby estimate is better than an unrelated date.')
         note=QLabel(('Uses a copy of the current Siril pixels.' if siril else 'Uses saved file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.')
         note.setWordWrap(True);prep.addRow(note);advanced_layout.addRow(self.preparation)
+        self.star_limit=QSpinBox();self.star_limit.setRange(100,20000);self.star_limit.setSingleStep(500);self.star_limit.setValue(DEFAULT_MAX_STARS)
+        self.star_limit.setToolTip('Fewer moving stars make preparation and rendering faster. Unselected stars stay in the photograph. Existing fields can use fewer stars; preparing additional stars needs a new project.')
+        advanced_layout.addRow('Moving stars (maximum)',self.star_limit)
         self.solver_settings=QGroupBox('Plate solving (ASTAP)');solver_form=QFormLayout(self.solver_settings)
         solver_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.astap=QLineEdit(find_astap());solver_form.addRow('ASTAP executable',self.path_row(self.astap,False))
@@ -306,7 +310,7 @@ class FlythroughWindow(QWidget):
                 wcs_path=str(self.file_source.wcs_path) if self.file_source.wcs_path else None,
                 astap=self.astap.text(),database=self.database.text().strip(),target=self.target.text().strip(),
                 fov=self.fov.value(),radius=self.radius.value(),binning=self.binning.value(),epoch=str(date),date_info=info,
-                seconds=self.seconds.value(),zoom=self.zoom_percent(),ffmpeg=self.ffmpeg.text(),
+                seconds=self.seconds.value(),zoom=self.zoom_percent(),max_stars=self.star_limit.value(),ffmpeg=self.ffmpeg.text(),
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',executable=self.executable.text())
             self.launch(None,None,options)
         except Exception as exc: self.show_problem('Cannot solve sky position',str(exc))
@@ -497,7 +501,7 @@ class FlythroughWindow(QWidget):
                 self.advanced_toggle.setChecked(True);self.epoch.setFocus()
                 raise ValueError('Enter the observation date in Advanced settings; this image has no DATE-OBS.')
             Time(date)
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),max_stars=self.star_limit.value(),mode="iterative",
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=str(Path(self.executable.text()).resolve()),ffmpeg=str(Path(self.ffmpeg.text()).resolve()),
                 epoch=str(date),date_info=info,output=str(out),source=source)
@@ -537,7 +541,7 @@ class FlythroughWindow(QWidget):
                 if not date: raise ValueError('Enter the observation date in Advanced settings before preparing the project.')
                 if not self.selected_date_info(): raise ValueError('Enter a valid capture year or date.')
             selected=self.selected_date_info()
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),max_stars=self.star_limit.value(),mode="iterative",
                 output=str(self.prepared),ffmpeg=self.ffmpeg.text(),reuse=True,
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=self.executable.text(),epoch=selected['value'] if selected else '',date_info=selected)
@@ -562,6 +566,7 @@ class FlythroughWindow(QWidget):
         if restore:
             self.seconds.setValue(state.get('seconds',60))
             self.zoom.setValue(1+state.get('zoom',30)/100)
+            self.star_limit.setValue(state.get('max_stars',DEFAULT_MAX_STARS))
             if state.get('ffmpeg'): self.ffmpeg.setText(state['ffmpeg'])
             if state.get('stage')=='solved':
                 self.engine.setCurrentIndex(0 if state.get('engine')=='StarXTerminator' else 1)

@@ -15,6 +15,7 @@ from astropy.wcs import WCS
 import tifffile
 from flythrough import prepare, render_video
 from catalog import validate_field
+from density import DEFAULT_MAX_STARS, moving_star_limit, limit_scene_stars
 from version import VERSION, created_stamp
 from photo_date import stamp_date, date_info
 
@@ -129,6 +130,7 @@ def resume_project(out, options, progress=lambda message:None, cancel=None):
         save_project(out,date_info=info,engine=getattr(options,'engine',state['engine']),
             executable=getattr(options,'executable',state['executable']),epoch=epoch)
         state=read_project(out)
+    options.max_stars=getattr(options,'max_stars',state.get('max_stars',DEFAULT_MAX_STARS))
     options.engine=state['engine']
     options.executable=state['executable']
     options.epoch=state['epoch']
@@ -140,6 +142,7 @@ def resume_project(out, options, progress=lambda message:None, cancel=None):
 
 def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None):
     cancel=cancel or threading.Event()
+    max_stars=moving_star_limit(getattr(options,'max_stars',DEFAULT_MAX_STARS))
     photo=normalized_pixels(pixels)
     if not has_solution(header):
         raise ValueError(UNSOLVED_MESSAGE)
@@ -157,7 +160,7 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
             source=str(options.source), engine=options.engine, executable=options.executable,
             epoch=str(options.epoch or header.get('DATE-OBS','')), stage='snapshot')
     info=getattr(options,'date_info',None) or read_project(out).get('date_info')
-    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,date_info=info)
+    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,date_info=info,max_stars=max_stars)
     header=header.copy();header['ROWORDER']='BOTTOM-UP'
     if options.epoch: header['DATE-OBS']=str(options.epoch)
     stamp_date(header,info)
@@ -201,7 +204,7 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
         epoch=options.epoch or None,magnitude=18,threshold=.008,match_pixels=3,max_uncertainty=.2,
         raster_bottom_up=False,travel=80,zoom=1+options.zoom/100,seconds=options.seconds,
         fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress,
-        stage_progress=getattr(options,'stage_progress',None))
+        stage_progress=getattr(options,'stage_progress',None),max_stars=max_stars)
     progress('Matching stars to Gaia and screening distance uncertainty…')
     scene,background=prepare(args,out)
     if info: scene=dict(scene,date_info=info)
@@ -231,7 +234,8 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     out=Path(out).resolve()
     cancel=cancel or threading.Event()
     mode='iterative'
-    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg)
+    max_stars=moving_star_limit(getattr(options,'max_stars',read_project(out).get('max_stars',DEFAULT_MAX_STARS)))
+    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,max_stars=max_stars)
     if scene is None:
         if mode=='iterative':
             path=out/'scene_iterative.json'
@@ -245,9 +249,14 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
                 if natural.get('extraction_version',0)<4:
                     raise ValueError('This legacy field needs fresh preparation. Choose a new project folder; old exports are preserved.')
                 from iterative_deblend import refine_prepared_field
+                natural,_=limit_scene_stars(natural,max_stars,progress,cancel,getattr(options,'stage_progress',None))
                 scene,background=refine_prepared_field(natural,out,progress,cancel,stage_progress=getattr(options,'stage_progress',None))
+                scene,limited_background=limit_scene_stars(scene,max_stars,progress,cancel,getattr(options,'stage_progress',None))
+                if limited_background is not None: background=limited_background
                 path.write_text(json.dumps(scene,allow_nan=False))
         background=np.asarray(Image.open(io.BytesIO(base64.b64decode(scene['background'].split(',')[1]))),dtype=float)/255
+    scene,limited_background=limit_scene_stars(scene,max_stars,progress,cancel,getattr(options,'stage_progress',None))
+    if limited_background is not None: background=limited_background
     if scene.get('extraction_version',0)<4:
         progress('This cached field uses older extraction. Create a new flight to apply compact-core fitting; rendering alone does not repair old patches.')
     if options.seconds<=3 or not 0<=options.zoom<=10000:
@@ -269,7 +278,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     (out/(stem+'.json')).write_text(json.dumps(dict(tool_version=VERSION,created_at=scene['render_created_at'],render_name=stem,
         field_version=scene.get('prepared_with_version','unversioned'),field_created_at=scene.get('prepared_at'),date_info=scene.get('date_info'),
         extraction_version=scene.get('extraction_version'),iterative_revision=scene.get('iterative_revision'),
-        duration_seconds=args.seconds,fps=24,
+        duration_seconds=args.seconds,fps=24,max_stars=max_stars,motion_selection=scene.get('motion_selection'),iterative_limits=scene.get('iterative_limits'),
         final_zoom=args.zoom,travel_pc=80,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
     render_video(scene,background,args,out/(stem+'.mp4'))
     save_project(out,stage='ready',seconds=options.seconds,zoom=options.zoom,
