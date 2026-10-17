@@ -5,15 +5,17 @@ import numpy as np
 from PIL import Image
 from task_progress import StageProgress
 
-DEFAULT_MAX_STARS=5000
+DEFAULT_MAX_STARS=50000
+MAX_MOVING_STARS=50000
 MAX_ITERATIVE_GROUPS=16
 MAX_GROUP_NEIGHBOURS=64
 
 
 def moving_star_limit(value=DEFAULT_MAX_STARS):
+    message=f'Moving star limit must be an integer from 1 to {MAX_MOVING_STARS}.'
     try: limit=int(value)
-    except (ValueError,TypeError,OverflowError): raise ValueError('Moving star limit must be an integer from 1 to 20000.')
-    if limit!=value or not 1<=limit<=20000: raise ValueError('Moving star limit must be an integer from 1 to 20000.')
+    except (ValueError,TypeError,OverflowError): raise ValueError(message)
+    if limit!=value or not 1<=limit<=MAX_MOVING_STARS: raise ValueError(message)
     return limit
 
 

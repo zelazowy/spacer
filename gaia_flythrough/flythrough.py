@@ -2,7 +2,7 @@
 from version import VERSION, created_stamp
 from catalog import get_catalog, check_cancel
 from task_progress import StageProgress
-from density import DEFAULT_MAX_STARS, moving_star_limit
+from density import DEFAULT_MAX_STARS, MAX_MOVING_STARS, moving_star_limit
 import argparse
 import base64
 import csv
@@ -376,7 +376,7 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--travel',type=float,default=30);p.add_argument('--zoom',type=float,default=1.08)
     p.add_argument('--magnitude',type=float,default=18)
-    p.add_argument('--max-stars',type=int,default=DEFAULT_MAX_STARS,help='Maximum moving star candidates to fit (1–20000).')
+    p.add_argument('--max-stars',type=int,default=DEFAULT_MAX_STARS,help=f'Maximum moving star candidates to fit (1–{MAX_MOVING_STARS}).')
     p.add_argument('--threshold',type=float,default=.008)
     p.add_argument('--match-pixels',type=float,default=3)
     p.add_argument('--max-uncertainty',type=float,default=.2)

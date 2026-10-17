@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.10.0**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.10.1**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -79,13 +79,13 @@ The main window contains the current project, duration and **Final zoom**, expre
 
 Use **Open project…** to return to saved work. In standalone mode, **Open image…** selects a disk image. In Siril, **New from Siril…** chooses a fresh project folder for the current image and opens its setup. The main project summary states whether SPACER uses current pixels or a saved image.
 
-**Advanced settings…** opens a scrollable dialog with image stretch, removal engine and executable, observation date, FFmpeg and project location. Fields expand with the dialog width, giving paths the available space while Browse buttons stay compact. Tools are discovered automatically; the date comes from the image. Missing setup opens this dialog. For a linear image, choose linked autostretch before preparation. Prepared projects disable preparation options because they reuse their saved image and tools. Newly solved projects keep these options editable until star removal starts. **Moving stars (maximum)** defaults to **5,000** and remains editable for saved fields; lower values reduce fitting and rendering work. Unselected stars remain in the photograph.
+**Advanced settings…** opens a scrollable dialog with image stretch, removal engine and executable, observation date, FFmpeg and project location. Fields expand with the dialog width, giving paths the available space while Browse buttons stay compact. Tools are discovered automatically; the date comes from the image. Missing setup opens this dialog. For a linear image, choose linked autostretch before preparation. Prepared projects disable preparation options because they reuse their saved image and tools. Newly solved projects keep these options editable until star removal starts. **Moving stars (maximum)** defaults to **50,000** and remains editable for saved fields; lower values reduce fitting and rendering work. Unselected stars remain in the photograph.
 
 Progress and cancellation stay in the main window. Video export shows a filling progress bar, completed/total frame counts, elapsed time and an approximate time remaining. After the last frame, **Finalizing MP4…** indicates that FFmpeg is still writing the file; 100% appears only after the export succeeds. Star-peak location, group separation, star measurements, Gaia matching, core fitting, Iterative selection/refinement and planned catalogue regions show a filling bar whenever their total is known. Counts include processed entries that were skipped or deferred. Percentages and estimates apply to the current stage and reset when the next stage starts. While Gaia processes a remote request or downloads a result of unknown size, the bar switches to an indeterminate activity indicator and hides stale counts/estimates. Completed-region progress returns after each result is saved. Dense catalogue regions can increase the planned region total when subdivided. Only steps without a known total, such as ASTAP solving or loading/saving image layers, use an activity indicator. **Details** immediately reveals the full captured diagnostic log and opens automatically after a processing failure; diagnostic lines never replace the concise current step. The title and subtitle keep a fixed height and gap; extra window space stays below the content. Status, progress and frame-counter space stay reserved so wrapping messages do not move the buttons. Plate-solving controls, including Advanced ASTAP settings, appear only for an unsolved standalone image. Rendering locks project/settings controls until the worker has stopped. Cancellation keeps preparation and earlier exports and returns a status message. Defaults remain 60 seconds, 1.3× final zoom, 24 fps, 80 pc travel and 1.5-second easing.
 
 ## Additional versions
 
-After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.10.0_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.10.0_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
+After the first run, change duration and zoom, then click **Render flight**. The saved star layers, WCS and Gaia distances are reused: star removal and catalogue matching are not repeated. Every version is saved alongside the others, for example `flythrough_v0.10.1_iterative_60s_zoom30pct_24fps.mp4` or `flythrough_v0.10.1_iterative_20s_zoom50pct_24fps.mp4`, with a matching HTML preview and settings JSON. Repeating the same parameters adds `_02`, `_03`, etc. instead of overwriting.
 
 Use **Open project…** to reuse a run folder after reopening the script. It accepts `scene.json` from this version, or imports the embedded field from an older `preview.html`. Additional versions always use that saved image, even if a different image is currently open in Siril.
 
@@ -116,13 +116,13 @@ The first download and matching can take longer for a larger or denser field and
 
 ## Dense star fields
 
-New preparation fits at most **5,000 moving-star candidates** by default, prioritizing bright photographed peaks after uniqueness and distance/quality screening. Set **Moving stars (maximum)** under Advanced settings (100–20,000 in the desktop UI). Actual moving-star counts can be lower when fitted cores are ambiguous or saturated. Stars outside the selected set remain in the flat photographic background.
+New preparation fits at most **50,000 moving-star candidates** by default, prioritizing bright photographed peaks after uniqueness and distance/quality screening. Set **Moving stars (maximum)** under Advanced settings (100–50,000 in the desktop UI). Actual moving-star counts can be lower when fitted cores are ambiguous or saturated. Stars outside the selected set remain in the flat photographic background.
 
 A Gaia log such as “442,587 sources” describes reference data used to avoid ambiguous matches. It does not mean that many sprites will be fitted or animated. The full reference—including faint/uncertain neighbours—is retained, so this limit does not reduce the first catalogue download. Completed downloads and star removal are still reused.
 
 Iterative refinement attempts at most **16 group fits**, with at most **64 catalogue neighbours per fitted group**. More crowded groups are deferred in full; neighbours are not silently removed to make a fit cheaper. They keep the conservative core/photographic background treatment. Neighbour searches use a spatial index. `iterative_report.json` records dense-group and group-budget deferrals.
 
-Existing prepared scenes are preserved. Rendering with a lower limit selects brighter photographed sprites and adds unselected sprites back into the stationary background; saved analysis is not rewritten. Increasing the limit can reuse additional stars already present in an older field, but stars omitted during a new limited preparation require a new project to prepare again. Project/render JSON records the requested limit and selection provenance. This changes which stars move, so it is released as **0.10.0** under the minor-version rules.
+Existing prepared scenes are preserved. Rendering with a lower limit selects brighter photographed sprites and adds unselected sprites back into the stationary background; saved analysis is not rewritten. Increasing the limit can reuse additional stars already present in an older field, but stars omitted during a new limited preparation require a new project to prepare again. Project/render JSON records the requested limit and selection provenance. The 0.10.0 release introduced this selection policy; 0.10.1 raises its default and maximum to 50,000. Saved project limits are respected; change an older 5,000 setting in Advanced settings to use the higher limit.
 
 ## Accuracy and validation
 
@@ -152,7 +152,7 @@ A preparation interrupted after validated star removal reuses that output. Match
 
 ## Versions
 
-The current release is **0.10.0**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.10.0_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
+The current release is **0.10.1**. Both window titles show the running version. New export filenames include it, for example `flythrough_v0.10.1_iterative_60s_zoom30pct_24fps.mp4`. Previews and JSON sidecars show the rendering version, UTC creation time, and separate field preparation version; older unlabelled fields remain explicitly unversioned. MP4 files also carry the tool version in their comment metadata. Existing exports are preserved. Release history and version bump rules are in `gaia_flythrough/CHANGELOG.md`.
 
 ## Development
 

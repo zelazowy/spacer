@@ -1,5 +1,12 @@
 # Gaia Flythrough releases
 
+## 0.10.1 — 2026-10-17
+
+- Raise the default and supported maximum moving-star limit to 50,000; desktop Advanced settings accepts 100–50,000, and the core API/CLI accepts 1–50,000. Share the upper boundary across validation, UI and CLI help.
+- Preserve explicitly saved project limits; older 5,000 settings can be raised in Advanced settings. Existing prepared fields can use only already saved stars; additional omitted cores still need fresh preparation.
+- Keep the 16-attempt/64-neighbour Iterative guards and full-reference matching checks. A higher limit permits more reliable stars but does not guarantee 50,000 matches or the speed measured with a 5,000 limit.
+- Verify the new default/boundaries, UI forwarding and saved lower limits with 81 passing tests. Corrective tuning of the 0.10 limit; algorithms and cache schemas are unchanged.
+
 ## 0.10.0 — 2026-10-17
 
 - Default to at most 5,000 moving-star core candidates, prioritizing photographed brightness after full-reference ambiguity and unchanged distance/quality checks. Expose Moving stars (maximum) in Advanced settings and remember it per project. Record selection/budget provenance in scenes and render metadata.

@@ -34,7 +34,9 @@ class DensityTests(unittest.TestCase):
         np.testing.assert_array_equal(np.uint8(np.rint(bg*255)),decode_layer(limited['background']))
 
     def test_invalid_limit_and_cancellation_do_not_mutate_scene(self):
-        for value in (0,-1,20001,2.5,None):
+        self.assertEqual(moving_star_limit(),50000)
+        for value in (1,20001,50000): self.assertEqual(moving_star_limit(value),value)
+        for value in (0,-1,50001,2.5,None):
             with self.assertRaises(ValueError): moving_star_limit(value)
         event=threading.Event();event.set()
         scene=dict(stars=[dict(image=png_data(np.ones((2,2,3))))]*3,background=png_data(np.zeros((3,3,3))))

@@ -15,7 +15,7 @@ from astropy.time import Time
 from image_source import FileImageSource
 from astap_solver import solve_project, find_astap, resolve_astap
 from task_progress import Diagnostic
-from density import DEFAULT_MAX_STARS
+from density import DEFAULT_MAX_STARS, MAX_MOVING_STARS
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QFormLayout,QHBoxLayout,
@@ -144,7 +144,7 @@ class FlythroughWindow(QWidget):
         self.epoch.setToolTip('Gaia positions are corrected for stellar proper motion at this date. A nearby estimate is better than an unrelated date.')
         note=QLabel(('Uses a copy of the current Siril pixels.' if siril else 'Uses saved file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.')
         note.setWordWrap(True);prep.addRow(note);advanced_layout.addRow(self.preparation)
-        self.star_limit=QSpinBox();self.star_limit.setRange(100,20000);self.star_limit.setSingleStep(500);self.star_limit.setValue(DEFAULT_MAX_STARS)
+        self.star_limit=QSpinBox();self.star_limit.setRange(100,MAX_MOVING_STARS);self.star_limit.setSingleStep(1000);self.star_limit.setValue(DEFAULT_MAX_STARS)
         self.star_limit.setToolTip('Fewer moving stars make preparation and rendering faster. Unselected stars stay in the photograph. Existing fields can use fewer stars; preparing additional stars needs a new project.')
         advanced_layout.addRow('Moving stars (maximum)',self.star_limit)
         self.solver_settings=QGroupBox('Plate solving (ASTAP)');solver_form=QFormLayout(self.solver_settings)
