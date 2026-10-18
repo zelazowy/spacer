@@ -392,7 +392,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_recalculate_action_requires_saved_layers_and_forwards_limit(self):
         w=self.window
-        self.assertTrue(w.recalculation.isHidden())
+        self.assertFalse(w.recalculation.isHidden());self.assertFalse(w.recalculate_button.isEnabled())
         saved=self.folder/'recalculate';saved.mkdir()
         (saved/'project.json').write_text(json.dumps(dict(stage='ready',max_stars=5000)))
         (saved/'scene_iterative.json').write_text(json.dumps(dict(stars=[],motion_selection=dict(limit=5000))))
@@ -428,6 +428,24 @@ class LauncherTests(unittest.TestCase):
         self.assertLessEqual(w.advanced_dialog.height(),w.screen().availableGeometry().height()-64)
         self.assertEqual(w.advanced_scroll.verticalScrollBar().maximum(),0)
 
+    def test_advanced_sections_and_geometry_stay_visible_across_project_stages(self):
+        w=self.window
+        def geometry():
+            w.advanced_dialog.close();w.advanced_toggle.setChecked(True);self.app.processEvents()
+            return (w.advanced_dialog.size(),w.preparation.geometry(),w.star_limit.geometry(),
+                w.recalculation.geometry(),w.ffmpeg.geometry(),w.output.geometry())
+        baseline=geometry()
+        for stage in ('solved','matching','refinement','ready'):
+            folder=self.folder/stage;folder.mkdir()
+            (folder/'project.json').write_text(json.dumps(dict(stage=stage,engine='StarNet',executable='/saved/tools/starnet2')))
+            if stage=='ready': (folder/'scene_iterative.json').write_text('{}')
+            w.use_prepared(folder)
+            self.assertFalse(w.preparation.isHidden());self.assertFalse(w.recalculation.isHidden())
+            self.assertEqual(w.preparation.isEnabled(),stage=='solved')
+            self.assertEqual(w.engine.currentIndex(),1);self.assertEqual(w.executable.text(),'/saved/tools/starnet2')
+            self.assertEqual(geometry(),baseline,stage)
+            if stage!='solved': self.assertIn('Completed star-removal output is reused',w.preparation_note.text())
+
     def test_new_image_uses_default_limit_after_opening_limited_project(self):
         from PIL import Image
         saved=self.folder/'old-limit';saved.mkdir()
@@ -437,7 +455,7 @@ class LauncherTests(unittest.TestCase):
         w=self.launcher.FlythroughWindow()
         try:
             w.use_prepared(saved);self.assertEqual(w.star_limit.value(),5000)
-            self.assertTrue(w.preparation.isHidden())
+            self.assertFalse(w.preparation.isHidden());self.assertFalse(w.preparation.isEnabled())
             w.use_image(image)
             self.assertEqual(w.star_limit.value(),50000);self.assertFalse(w.preparation.isHidden())
         finally: w.close()

@@ -1,5 +1,11 @@
 # Gaia Flythrough releases
 
+## 0.11.3 — 2026-10-18
+
+- Keep preparation and recalculation sections visible across new, partial and prepared projects. Disable unavailable controls instead of removing them, and reserve explanatory text space to keep common settings in place. Retain the previously requested unsolved-only solver controls.
+- Display the recorded removal engine/path for all saved stages. Explain that cached starless layers are reused and changing an executable path does not change those pixels or prepared stars.
+- Correct the interface audit guidance to prioritize the user’s stable-layout preference. Verify exact Advanced geometry across new/solved/matching/refinement/ready stages with 94 passing tests. Presentation patch; calculations and caches are unchanged.
+
 ## 0.11.2 — 2026-10-17
 
 - Audit new/unsolved/solved/saved/busy/cancelled interface states and normal/wide settings. Hide first-preparation controls once they no longer apply; reset the 50,000 default for new inputs while preserving saved project choices.

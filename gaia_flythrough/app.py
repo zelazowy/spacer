@@ -138,24 +138,29 @@ class FlythroughWindow(QWidget):
         self.engine=QComboBox();self.engine.addItems(['StarXTerminator','StarNet 2.5+'])
         prep.addRow('Star removal',self.engine)
         self.executable=QLineEdit();prep.addRow('Engine executable',self.path_row(self.executable,False))
+        self.executable.setToolTip('Used to create the starless image. Changing its path does not alter saved star-removal output.')
         self.engine.currentIndexChanged.connect(self.choose_engine);self.choose_engine()
         if not self.executable.text() and find_tool('starnet2'): self.engine.setCurrentIndex(1)
         self.epoch=QLineEdit();self.epoch.setPlaceholderText('Automatic; override with YYYY or YYYY-MM-DD')
         prep.addRow('Observation date',self.epoch)
         self.date_origin=QLabel('Capture metadata is preferred; file dates are used as estimates.');self.date_origin.setWordWrap(True)
+        self.date_origin.setFixedHeight(self.date_origin.fontMetrics().lineSpacing()*2+4)
         prep.addRow(self.date_origin)
         self.epoch.textEdited.connect(self.update_date_origin)
         date_hint=QLabel('Approximate capture year is enough for ordinary matching. You can correct the detected date or enter just a year.')
         date_hint.setWordWrap(True);prep.addRow(date_hint)
         self.epoch.setToolTip('Gaia positions are corrected for stellar proper motion at this date. A nearby estimate is better than an unrelated date.')
-        note=QLabel(('Uses a copy of the current Siril pixels.' if siril else 'Uses saved file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.')
-        note.setWordWrap(True);prep.addRow(note);advanced_layout.addRow(self.preparation)
+        self.new_preparation_note=('Uses a copy of the current Siril pixels.' if siril else 'Uses file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.'
+        self.preparation_note=QLabel(self.new_preparation_note)
+        self.preparation_note.setWordWrap(True);self.preparation_note.setFixedHeight(self.preparation_note.fontMetrics().lineSpacing()*3+4)
+        prep.addRow(self.preparation_note);advanced_layout.addRow(self.preparation)
         self.star_limit=QSpinBox();self.star_limit.setRange(100,MAX_MOVING_STARS);self.star_limit.setSingleStep(1000);self.star_limit.setValue(DEFAULT_MAX_STARS)
         self.star_limit.setToolTip('Fewer moving stars make preparation and rendering faster. Unselected stars stay in the photograph. Use Recalculate stars to fit additional stars from the saved image layers.')
         advanced_layout.addRow('Moving stars (maximum)',self.star_limit)
         self.recalculation=QWidget();recalculation_layout=QVBoxLayout(self.recalculation)
         recalculation_layout.setContentsMargins(0,0,0,0)
         self.calculation_hint=QLabel();self.calculation_hint.setWordWrap(True)
+        self.calculation_hint.setFixedHeight(self.calculation_hint.fontMetrics().lineSpacing()*3+4)
         recalculation_layout.addWidget(self.calculation_hint)
         self.recalculate_button=QPushButton('Recalculate stars');self.recalculate_button.setAutoDefault(False)
         self.recalculate_button.clicked.connect(self.recalculate_stars)
@@ -277,8 +282,9 @@ class FlythroughWindow(QWidget):
         info=self.selected_date_info()
         if info:
             prefix='Estimated from ' if info['approximate'] else 'From '
-            self.date_origin.setText(prefix+info['source']+'. You can override it.')
-        else: self.date_origin.setText('No usable date found. Enter an approximate capture year.')
+            suffix=' You can override it.' if self.preparation.isEnabled() else ' Saved matching date.'
+            self.date_origin.setText(prefix+info['source']+'.'+suffix)
+        else: self.date_origin.setText('No usable date found. Enter an approximate capture year.' if self.preparation.isEnabled() else 'Saved matching date is not recorded.')
 
     def detect_siril_date(self):
         try:
@@ -395,8 +401,9 @@ class FlythroughWindow(QWidget):
         self.project_hint.setText(('Saved image · ready to render; analysis is reused.' if ready else 'Saved image · missing preparation steps will resume.') if saved else new_hint)
         self.project_hint.setToolTip(str(folder))
         self.preparation.setEnabled(not saved or read_project(folder).get('stage')=='solved')
-        self.preparation.setVisible(self.preparation.isEnabled())
-        self.recalculation.setVisible(saved)
+        self.update_date_origin()
+        self.preparation_note.setText(self.new_preparation_note if not saved or read_project(folder).get('stage')=='solved' else
+            'Uses the saved image and preparation settings. Completed star-removal output is reused.\nChanging an engine path does not change saved starless layers or prepared stars.')
         self.update_calculation_hint()
         self.start.setText(('Render flight' if ready else 'Resume and render') if saved else 'Prepare and render')
         if folder!=self.prepared:
@@ -427,7 +434,10 @@ class FlythroughWindow(QWidget):
         folder=Path(self.output.text()).expanduser().resolve()
         missing=recalculation_missing(folder)
         self.recalculate_button.setEnabled(not missing)
-        if missing:
+        saved=any((folder/name).is_file() for name in ('project.json','scene.json','scene_iterative.json','preview.html'))
+        if not saved and missing:
+            self.calculation_hint.setText('Available after first preparation. Recalculate stars reuses the saved image, starless layer and Gaia catalogue.')
+        elif missing:
             self.calculation_hint.setText('Recalculation needs saved layers: '+', '.join(missing)+'.')
         else:
             summary=(f'Prepared: {self.prepared_star_count:,} moving stars. ' if folder==self.prepared and self.prepared_star_count is not None else '')
@@ -650,8 +660,9 @@ class FlythroughWindow(QWidget):
             self.zoom.setValue(1+state.get('zoom',30)/100)
             self.star_limit.setValue(state.get('max_stars',DEFAULT_MAX_STARS))
             if state.get('ffmpeg'): self.ffmpeg.setText(state['ffmpeg'])
-            if state.get('stage')=='solved':
-                self.engine.setCurrentIndex(0 if state.get('engine')=='StarXTerminator' else 1)
+            if 'engine' in state:
+                self.engine.setCurrentIndex(0 if state['engine']=='StarXTerminator' else 1)
+            if 'executable' in state:
                 self.executable.setText(state.get('executable',''))
             saved_date=state.get('date_info') or saved_scene.get('date_info') or date_info(state.get('epoch',''),'Saved project date (source unrecorded)',True)
             if not saved_date and state.get('stage')=='solved' and (folder/'source_wcs.fits').is_file():
