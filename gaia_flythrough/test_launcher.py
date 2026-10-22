@@ -433,6 +433,21 @@ class LauncherTests(unittest.TestCase):
         self.assertIn('calculations updated',w.status.text());self.assertEqual(w.progress_bar.value(),1000)
         w.worker=None
 
+    def test_extended_distance_setting_restores_and_forwards_to_recalculation(self):
+        w=self.window;self.assertFalse(w.approximate_distances.isChecked())
+        saved=self.folder/'extended';saved.mkdir()
+        (saved/'project.json').write_text(json.dumps(dict(stage='ready',approximate_distances=True)))
+        (saved/'scene_iterative.json').write_text(json.dumps(dict(stars=[],distance_coverage=dict(enabled=True))))
+        for name in ('photo.png','starless.png','source_wcs.fits','catalog.csv'):(saved/name).touch()
+        w.use_prepared(saved)
+        self.assertTrue(w.approximate_distances.isChecked())
+        self.assertNotIn('coverage changed',w.calculation_hint.text())
+        w.approximate_distances.setChecked(False)
+        self.assertIn('coverage changed',w.calculation_hint.text())
+        with patch.object(w,'launch') as launch:
+            w.recalculate_button.click()
+            self.assertFalse(launch.call_args.args[2].approximate_distances)
+
     def test_project_picker_starts_at_current_folder_or_existing_parent(self):
         from PyQt6.QtWidgets import QPushButton
         w=self.window;current=self.folder/'current';current.mkdir()

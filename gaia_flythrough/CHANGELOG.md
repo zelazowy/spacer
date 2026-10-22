@@ -1,3 +1,13 @@
+# 0.17.0 — 2026-10-22
+
+- Add opt-in approximate distance coverage to both launchers and the prototype CLI: screened Bailer-Jones photogeometric/broader geometric estimates and Hipparcos-2 bright-star fallback.
+- Preserve strict Gaia geometric estimates when available. Retain Gaia RUWE screening and require high-significance, single-component five-parameter Hipparcos solutions.
+- Propagate Hipparcos positions from epoch 1991.25, conservatively screen Gaia duplicates, and retain independent source IDs and uncertainty provenance.
+- Cache extra references separately, preserve historical catalog.csv and calculation revisions, and require explicit Recalculate stars after coverage changes. Reuse caches without repeating star removal.
+- Record moving-star counts by source in the scene, distance_coverage.json, Details and export JSON; show each star's distance source in the interactive preview.
+- Raise the bounded neighbour count from 64 to 96 without relaxing fit, overlap or unresolved-companion checks.
+- Real M45 validation: 6,328 → 9,392 movers (+48.4%), including 3,064 approximate estimates. Hipparcos contributed no accepted sprites in this field; accepted bright-group count remains 14. Overlapping bright stars still need better separation.
+
 # 0.16.0 — 2026-10-22
 
 - Port relevant improvements from Siril_ASTAP_PlateSolve.py 0.5.0 into the standalone ASTAP path without importing Siril.

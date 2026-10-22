@@ -7,6 +7,7 @@ import numpy as np
 import json
 from task_progress import StageProgress, Diagnostic
 from density import MAX_ITERATIVE_GROUPS, MAX_GROUP_NEIGHBOURS
+from distances import choose_distance, coverage_summary
 import csv
 import io
 from version import VERSION, created_stamp
@@ -210,7 +211,9 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
     residual=np.maximum(photo-starless,0)
     h,w=photo.shape[:2]
     header=fits.getheader(folder/'source_wcs.fits');wcs=WCS(header,naxis=2).celestial
-    with (folder/'catalog.csv').open() as file: rows=list(csv.DictReader(file))
+    with (folder/scene.get('motion_catalog','catalog.csv')).open() as file: rows=list(csv.DictReader(file))
+    extended=scene.get('distance_coverage',{}).get('enabled',False)
+    choices=[choose_distance(row,extended) for row in rows]
     positions_progress=StageProgress('Calculating Iterative catalogue positions',len(rows),stage_progress,progress,cancel)
     sky=SkyCoord(ra=[number(r,'ra') for r in rows]*u.deg,dec=[number(r,'dec') for r in rows]*u.deg,
         pm_ra_cosdec=np.nan_to_num([number(r,'pmra') for r in rows])*u.mas/u.yr,
@@ -222,8 +225,7 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
     gx,gy=wcs.world_to_pixel(sky);gy=h-1-gy
     positions_progress.update(len(rows))
     def reliable(i):
-        d,lo,hi,ruwe=[number(rows[i],key) for key in ('r_med_geo','r_lo_geo','r_hi_geo','ruwe')]
-        return 0<lo<=d<=hi and (hi-lo)/(2*d)<=.2 and ruwe<=1.4
+        return choices[i] is not None
     candidates=[];core_flux={}
     selection=StageProgress('Selecting Iterative groups',len(rows),stage_progress,progress,cancel)
     for i,(x,y) in enumerate(selection.track(zip(gx,gy))):
@@ -305,11 +307,12 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
             layer=np.minimum(layer,np.maximum(background[sy,sx]-starless[sy,sx],0))
             background[sy,sx]-=layer
             px,py=(x,y) if index==primary_index else (float(gx[index]),float(gy[index]))
-            d,lo,hi=[number(rows[index],key) for key in ('r_med_geo','r_lo_geo','r_hi_geo')]
+            estimate=choices[index]
+            d,lo,hi=[estimate[key] for key in ('distance_pc','lower_pc','upper_pc')]
             depth=d*np.cos(optical_center.separation(wcs.pixel_to_world(px,h-1-py)).rad)
             retained.append(dict(x=px,y=py,depth=float(depth),ax=px-left,ay=py-top,
                 w=layer.shape[1],h=layer.shape[0],image=png_data(layer),source_id=rows[index]['source_id'],
-                distance_pc=d,lower_pc=lo,upper_pc=hi,iterative_group=source_id))
+                **estimate,iterative_group=source_id))
             recovered.append(rows[index]['source_id'])
         stars=retained;accepted_centers.append((x,y))
         if angle is not None:accepted_angles.append(angle)
@@ -317,9 +320,14 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
             analysed_catalogue_sources=len(indices)+1,recovered_sources=recovered))
     StageProgress('Saving Iterative field',-1,stage_progress,progress,cancel)
     result=dict(scene,stars=stars,background=png_data(background),extraction_version=6,iterative_revision=3,prepared_with_version=VERSION,prepared_at=created_stamp(),mode='iterative',
+        distance_coverage=coverage_summary(stars,extended),
         iterative_limits=dict(max_fitted_groups=MAX_ITERATIVE_GROUPS,max_neighbours=MAX_GROUP_NEIGHBOURS,fitted_groups=fits_started,stabilised_retries=retries_started,max_stabilised_retries=4),
         label='Experimental iterative halo/spike separation; uncertain bright groups remain stationary')
     if 'motion_selection' in scene:
         result['motion_selection']=dict(scene['motion_selection'],moving_stars=len(stars))
     (Path(report_folder or folder)/'iterative_report.json').write_text(json.dumps(report,indent=2))
+    (Path(report_folder or folder)/'distance_coverage.json').write_text(json.dumps(result['distance_coverage'],indent=2))
+    summary=result['distance_coverage']
+    progress(f'Distance coverage: {len(stars):,} moving stars · {summary["approximate_stars"]:,} approximate. '+
+        ', '.join(f'{source}: {count:,}' for source,count in summary['by_source'].items()))
     return result,background

@@ -76,7 +76,7 @@ def cone_query(cone,mag):
       AND g.phot_g_mean_mag < {mag:.3f}'''
 
 
-def parse_result(data):
+def parse_result(data,required=COLUMNS):
     # CSV cannot reliably signal service-side truncation. TAP VOTables carry
     # QUERY_STATUS, including a trailing OVERFLOW after otherwise valid rows.
     root=ET.fromstring(data)
@@ -88,12 +88,12 @@ def parse_result(data):
         if status not in ('OK','OVERFLOW'): raise ValueError('Unknown catalogue completion status: '+status)
     if any(node.get('value','').upper()=='OVERFLOW' for node in statuses): raise CatalogOverflow()
     table=parse_single_table(io.BytesIO(data)).array
-    if not set(COLUMNS).issubset(table.dtype.names or ()): raise ValueError('Catalogue response is missing required columns.')
+    if not set(required).issubset(table.dtype.names or ()): raise ValueError('Catalogue response is missing required columns.')
     if len(table)>=MAX_ROWS: raise CatalogOverflow()
     rows=[]
     for record in table:
-        row={key:('' if np.ma.is_masked(record[key]) else str(record[key])) for key in COLUMNS}
-        if not row['source_id']: raise ValueError('Catalogue response has a missing source identifier.')
+        row={key:('' if np.ma.is_masked(record[key]) else str(record[key])) for key in table.dtype.names}
+        if 'source_id' in required and not row['source_id']: raise ValueError('Catalogue response has a missing source identifier.')
         rows.append(row)
     return rows
 
@@ -144,7 +144,8 @@ def query_region(query,cancel=None,progress=print):
 def write_rows(path,rows):
     temporary=path.with_suffix('.tmp')
     with temporary.open('w',newline='') as file:
-        writer=csv.DictWriter(file,fieldnames=COLUMNS);writer.writeheader();writer.writerows(rows)
+        fields=list(COLUMNS)+sorted(set().union(*(set(row) for row in rows))-set(COLUMNS))
+        writer=csv.DictWriter(file,fieldnames=fields);writer.writeheader();writer.writerows(rows)
     temporary.replace(path)
 
 
@@ -159,7 +160,7 @@ def cached_rows(path):
     except (OSError,csv.Error): return None
 
 
-def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None,stage_progress=None):
+def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None,stage_progress=None,query_builder=None):
     path=Path(path)
     check_cancel(cancel)
     validate_field(wcs,width,height)
@@ -175,7 +176,7 @@ def get_catalog(wcs,width,height,path,mag,progress=print,cancel=None,stage_progr
     def fetch(bounds,cone,depth=0):
         nonlocal completed
         check_cancel(cancel)
-        query=cone_query(cone,mag)
+        query=(query_builder or cone_query)(cone,mag)
         key=hashlib.sha256(('v1:'+ENDPOINT+':'+str(MAX_ROWS)+':'+query).encode()).hexdigest()
         part=cache/(key+'.csv');split=cache/(key+'.split')
         result=cached_rows(part) if part.exists() else None

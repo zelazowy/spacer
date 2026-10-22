@@ -140,6 +140,7 @@ def recalculate_project(out,options,progress=lambda message:None,cancel=None):
     args=argparse.Namespace(photo=out/'photo.png',starless=out/'starless.png',wcs=out/'source_wcs.fits',
         catalog_path=out/'catalog.csv',epoch=header.get('DATE-OBS') or state.get('epoch'),
         magnitude=18,threshold=.008,match_pixels=3,max_uncertainty=.2,raster_bottom_up=False,
+        approximate_distances=bool(getattr(options,'approximate_distances',state.get('approximate_distances',False))),catalog_root=out,
         max_stars=max_stars,progress=progress,cancel_event=cancel,stage_progress=getattr(options,'stage_progress',None))
     progress(f'Recalculating stars with limit {max_stars:,}. Reusing saved image, starless layer and Gaia catalogue.')
     with tempfile.TemporaryDirectory(prefix='.recalculate-',dir=out) as temporary:
@@ -152,6 +153,7 @@ def recalculate_project(out,options,progress=lambda message:None,cancel=None):
         scene,background=refine_prepared_field(scene,out,progress,cancel,
             stage_progress=getattr(options,'stage_progress',None),report_folder=work)
         scene,_=limit_scene_stars(scene,max_stars,progress,cancel,getattr(options,'stage_progress',None))
+        (work/'distance_coverage.json').write_text(json.dumps(scene.get('distance_coverage',{}),indent=2))
         if cancel.is_set(): raise InterruptedError('Star recalculation cancelled. Previous calculations are kept.')
         (work/'scene_iterative.json').write_text(json.dumps(scene,allow_nan=False))
         history=out/'calculations';history.mkdir(exist_ok=True)
@@ -159,7 +161,7 @@ def recalculate_project(out,options,progress=lambda message:None,cancel=None):
         while (history/f'v{VERSION}_{index:03d}').exists(): index+=1
         revision=history/f'v{VERSION}_{index:03d}'
         work.rename(revision)
-        save_project(out,calculation_path=str(revision.relative_to(out)),max_stars=max_stars,stage='ready')
+        save_project(out,calculation_path=str(revision.relative_to(out)),max_stars=max_stars,approximate_distances=args.approximate_distances,stage='ready')
     progress(f'Star calculations updated: {len(scene["stars"]):,} moving stars. Ready to render.')
     return out
 
@@ -183,6 +185,7 @@ def resume_project(out, options, progress=lambda message:None, cancel=None):
             executable=getattr(options,'executable',state['executable']),epoch=epoch)
         state=read_project(out)
     options.max_stars=getattr(options,'max_stars',state.get('max_stars',DEFAULT_MAX_STARS))
+    options.approximate_distances=getattr(options,'approximate_distances',state.get('approximate_distances',False))
     options.engine=state['engine']
     options.executable=state['executable']
     options.epoch=state['epoch']
@@ -212,7 +215,8 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
             source=str(options.source), engine=options.engine, executable=options.executable,
             epoch=str(options.epoch or header.get('DATE-OBS','')), stage='snapshot')
     info=getattr(options,'date_info',None) or read_project(out).get('date_info')
-    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,date_info=info,max_stars=max_stars)
+    save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,date_info=info,max_stars=max_stars,
+        approximate_distances=bool(getattr(options,'approximate_distances',False)))
     header=header.copy();header['ROWORDER']='BOTTOM-UP'
     if options.epoch: header['DATE-OBS']=str(options.epoch)
     stamp_date(header,info)
@@ -256,13 +260,13 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
         epoch=options.epoch or None,magnitude=18,threshold=.008,match_pixels=3,max_uncertainty=.2,
         raster_bottom_up=False,travel=80,zoom=1+options.zoom/100,seconds=options.seconds,
         fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress,
-        stage_progress=getattr(options,'stage_progress',None),max_stars=max_stars)
+        stage_progress=getattr(options,'stage_progress',None),max_stars=max_stars,approximate_distances=bool(getattr(options,'approximate_distances',False)),catalog_root=out)
     progress('Matching stars to Gaia and screening distance uncertainty…')
     scene,background=prepare(args,out)
     if info: scene=dict(scene,date_info=info)
     if cancel.is_set(): raise InterruptedError('Cancelled after catalogue matching.')
     (out/'scene.json').write_text(json.dumps(scene,allow_nan=False))
-    save_project(out,stage='refinement')
+    save_project(out,stage='refinement',approximate_distances=args.approximate_distances)
     return render_prepared(out,options,progress,cancel)
 
 
@@ -279,6 +283,12 @@ def load_prepared_scene(out):
         raise ValueError('The prepared field is incomplete.')
     path.write_text(json.dumps(scene,allow_nan=False))
     return scene
+
+
+def check_distance_coverage(scene,options):
+    prepared=scene.get('distance_coverage',{}).get('enabled',False)
+    if bool(getattr(options,'approximate_distances',prepared))!=prepared:
+        raise ValueError('Distance coverage changed. Use Advanced settings → Recalculate stars before rendering.')
 
 
 def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=None,background=None):
@@ -299,12 +309,14 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
         if mode=='iterative':
             path=active/'scene_iterative.json'
             if path.exists(): scene=json.loads(path.read_text())
+            if scene is not None:check_distance_coverage(scene,options)
             if scene is None or scene.get('iterative_revision',0)<2:
                 if path.exists():
                     backup=active/'scene_iterative_before_spike_refinement.json'
                     if not backup.exists(): backup.write_text(path.read_text())
                     progress('Updating cached spike separation using the saved field.')
                 natural=load_prepared_scene(out)
+                check_distance_coverage(natural,options)
                 if natural.get('extraction_version',0)<4:
                     raise ValueError('This legacy field needs fresh preparation. Choose a new project folder; old exports are preserved.')
                 from iterative_deblend import refine_prepared_field
@@ -314,6 +326,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
                 if limited_background is not None: background=limited_background
                 path.write_text(json.dumps(scene,allow_nan=False))
         background=np.asarray(Image.open(io.BytesIO(base64.b64decode(scene['background'].split(',')[1]))),dtype=float)/255
+    check_distance_coverage(scene,options)
     scene,limited_background=limit_scene_stars(scene,max_stars,progress,cancel,getattr(options,'stage_progress',None))
     if limited_background is not None: background=limited_background
     if scene.get('extraction_version',0)<4:
@@ -343,6 +356,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
         extraction_version=scene.get('extraction_version'),iterative_revision=scene.get('iterative_revision'),
         calculation_path=read_project(out).get('calculation_path'),
         duration_seconds=args.seconds,fps=24,max_stars=max_stars,motion_selection=scene.get('motion_selection'),iterative_limits=scene.get('iterative_limits'),
+        distance_coverage=scene.get('distance_coverage'),
         final_zoom=(target_distance/(target_distance-travel) if zoom_mode=='target_distance' else args.zoom),
         zoom_mode=zoom_mode,target_info=motion_settings['target_info'],target_distance_pc=target_distance,travel_pc=travel,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
     render_video(scene,background,args,out/(stem+'.mp4'))

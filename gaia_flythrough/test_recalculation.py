@@ -75,6 +75,42 @@ class RecalculationTests(unittest.TestCase):
         self.assert_originals_kept();self.assertFalse(list(self.folder.glob('.recalculate-*')))
         self.assertEqual(calculation_folder(self.folder),self.folder)
 
+    def test_extended_distances_reuse_caches_and_preserve_old_revision(self):
+        from catalog import write_rows
+        from siril_pipeline import render_prepared
+        with (self.folder/'catalog.csv').open() as file:rows=list(csv.DictReader(file))
+        rows[1].update(r_lo_geo='50',r_hi_geo='350')
+        rows[2]['ruwe']='2'
+        write_rows(self.folder/'catalog.csv',rows)
+        for row in rows:row.update(r_med_photogeo='220',r_lo_photogeo='150',r_hi_photogeo='290')
+        write_rows(self.folder/'catalog-extended.csv',rows)
+        hip=dict(rows[2],source_id='HIP:99',hip_id='99',hip_parallax='5',hip_parallax_error='.5',
+            hip_solution_type='5',hip_components='1',hip_quality_fit='1')
+        write_rows(self.folder/'catalog-hipparcos2.csv',[hip])
+        recalculate_project(self.folder,self.options,lambda _:None)
+        strict=calculation_folder(self.folder)
+        strict_bytes=(strict/'scene_iterative.json').read_bytes()
+        self.assertEqual(len(json.loads(strict_bytes)['stars']),1)
+        self.options.approximate_distances=True
+        with patch('catalog.query_region') as gaia_query,patch('distances.urllib.request.urlopen') as hip_query:
+            recalculate_project(self.folder,self.options,lambda _:None)
+            gaia_query.assert_not_called();hip_query.assert_not_called()
+        extended=calculation_folder(self.folder)
+        scene=json.loads((extended/'scene_iterative.json').read_text())
+        self.assertEqual(scene['distance_coverage']['by_source'],{'Gaia geometric':1,'Gaia photogeometric':1,'Hipparcos-2':1})
+        self.assertEqual(scene['distance_coverage']['approximate_stars'],2)
+        self.assertTrue((extended/'catalog-motion.csv').is_file())
+        self.assertTrue(read_project(self.folder)['approximate_distances'])
+        self.assertEqual((strict/'scene_iterative.json').read_bytes(),strict_bytes)
+        options=SimpleNamespace(seconds=4,zoom=30,ffmpeg='ffmpeg',approximate_distances=False)
+        with patch('siril_pipeline.render_video') as render:
+            with self.assertRaisesRegex(ValueError,'Recalculate stars'):render_prepared(self.folder,options)
+            render.assert_not_called()
+        options.approximate_distances=True
+        with patch('siril_pipeline.render_video') as render:
+            render_prepared(self.folder,options,lambda _:None)
+            self.assertEqual(render.call_args.args[0]['distance_coverage']['approximate_stars'],2)
+
     def test_refinement_failure_keeps_previous_calculations_and_diagnostics(self):
         with patch('iterative_deblend.refine_prepared_field',side_effect=RuntimeError('fit failed')):
             with self.assertRaisesRegex(RuntimeError,'fit failed'): recalculate_project(self.folder,self.options)

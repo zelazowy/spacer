@@ -4,7 +4,7 @@
 
 *A walk through your astrophotography.*
 
-Current version: **0.11.3**. Run SPACER as a standalone desktop app or from Siril.
+Current version: **0.17.0**. Run SPACER as a standalone desktop app or from Siril.
 
 ## Standalone desktop app
 
@@ -179,7 +179,7 @@ In Flight, choose **Travel toward a target**, then enter **Target distance** and
 
 **Camera zoom** remains the default; its Final zoom control applies the familiar extra enlargement. Both modes now expose travel distance. Travel must be less than target distance in perspective mode. Settings are saved with the project and new exports; existing prepared fields and older exports remain intact.
 
-Bright stationary stars can lack usable catalogue distances, fail the astrometric/uncertainty screens, or be deferred by image separation (unresolved companions, overlapping groups, fit failure or work limits). We do not infer distance from photographed brightness or relax separation just to animate more stars. Supplementary bright-star catalogues are not yet integrated.
+Bright stationary stars can lack usable catalogue distances, fail the astrometric/uncertainty screens, or be deferred by image separation (unresolved companions, overlapping groups, fit failure or work limits). We do not infer distance from photographed brightness or relax separation just to animate more stars. Optional supplementary distances are available under Advanced → Star calculations; see below.
 
 ## Catalogue target picker (0.13.0)
 
@@ -227,3 +227,18 @@ Technical source details are in tooltips/Advanced; full processing logs remain i
 The standalone solver now tries existing pointing/optics hints before wider auto-FOV searches, with additional compact-star recovery for processed images. Invalid equinox metadata and stale PC/SIP coordinate terms are cleaned on private solver copies/results. Explicit object and field-height settings still take precedence. Cancellation, shared timeout and detailed solver logs remain available.
 
 Every candidate is still confirmed on the original photographed pixels before a solution is saved. Input pixels and orientation are preserved; the Siril helper's optional mirror correction is not applied in SPACER. Existing solved projects do not need to be solved again.
+
+
+## Broader stellar distance coverage (0.17.0)
+
+Enable **Advanced settings → Star calculations → Include approximate distances** before preparation, or enable it in an existing project and choose **Recalculate stars**. It is off by default. A saved calculation keeps its chosen coverage until explicitly recalculated; changing the checkbox alone does not reinterpret an old scene. First use downloads extra catalogue data. Later recalculations reuse those caches and the saved photo, starless image and WCS. Old calculations and exports are preserved.
+
+Good Gaia geometric estimates remain preferred: RUWE ≤1.4 and fractional interval half-width ≤20%. The additional option permits [Bailer-Jones photogeometric distances](https://bailer-jones.www3.mpia.de/gedr3_distances.html), which use catalogue colour/magnitude information as well as parallax, with half-width up to 50%. Broader geometric estimates up to the same limit are a final Gaia fallback. The RUWE screen remains in place. The interval criterion is `(upper − lower) / (2 × median)`, using the catalogue posterior bounds; it is not a guarantee of distance accuracy or correct depth ordering.
+
+For bright sources, the option also queries [Hipparcos-2 through NASA HEASARC](https://heasarc.gsfc.nasa.gov/W3Browse/all/hipnewcat.html). Only single-component, ordinary five-parameter solutions with positive parallax, relative parallax error ≤20% and goodness of fit ≤3 qualify. These high-significance parallaxes are inverted, with asymmetric bounds transformed from parallax ± its quoted error. They are labelled approximate and are not the same kind of interval as the Gaia Bayesian posterior. Hipparcos systematics and source-association uncertainty remain possible. No distance is inferred from the brightness of photographed pixels.
+
+Hipparcos positions are propagated from epoch 1991.25 to 2016 before duplicate screening against Gaia, then to the image date for pixel matching. A unique match within 1 arcsecond can supply Hipparcos astrometry/distance when strict Gaia distance quality fails; multiple Gaia candidates within 3 arcseconds or an uncertain association are deferred. New Hipparcos sources without Gaia counterparts are also tested. Image matching, unresolved-companion and extraction checks still apply, so extra catalogue rows do not automatically become moving stars.
+
+Per-star source, source identifier, approximate flag and interval are stored in the scene. Click a moving star in the preview to inspect them. `distance_coverage.json`, Details and export JSON record counts by method. Extended references use separate `catalog-extended.csv`, `catalog-hipparcos2.csv` and `catalog-motion.csv` caches; the original `catalog.csv` is preserved. New extended calculation revisions retain their merged reference snapshot. The prototype CLI also accepts `--approximate-distances` with its existing photo/starless/WCS inputs.
+
+The bounded iterative pass now admits up to 96 catalogue neighbours per bright group, up from 64, while retaining the 16-group budget, convergence, residual, overlap and spike-direction screens. This does not solve overlapping bright-star halos. A real M45 test produced **9,392 moving stars** versus the prior **6,328**: 6,328 strict geometric, 3,034 photogeometric and 30 broader geometric estimates. Hipparcos added reference coverage but no accepted moving sprites in this particular field. Fourteen bright groups were accepted, unchanged in count; bright-star separation remains the main limitation. First/middle/final 30%-zoom frames and bright-star regions were inspected. These are results for one image, not a universal gain or a physical validation of every distance.

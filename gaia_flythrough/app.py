@@ -21,7 +21,7 @@ from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QFormLayout,QHBoxLayout,
     QLabel,QComboBox,QSpinBox,QDoubleSpinBox,QLineEdit,QPushButton,QFileDialog,
-    QMessageBox,QPlainTextEdit,QGroupBox,QToolButton,QProgressBar,QSizePolicy,QDialog,QDialogButtonBox,QScrollArea)
+    QMessageBox,QPlainTextEdit,QGroupBox,QToolButton,QProgressBar,QSizePolicy,QDialog,QDialogButtonBox,QScrollArea,QCheckBox)
 
 
 class ZoomSpinBox(QDoubleSpinBox):
@@ -85,7 +85,7 @@ class FlythroughWindow(QWidget):
         self.preferences=Preferences()
         self.auto_date_info=None
         self.target_worker=None;self.target_info=None
-        self.prepared_star_limit=None;self.prepared_star_count=None
+        self.prepared_star_limit=None;self.prepared_star_count=None;self.prepared_approximate=None
         self.render_succeeded=False
         self.setWindowTitle(f'SPACER — v{VERSION}')
         self.resize(680,560)
@@ -206,6 +206,9 @@ class FlythroughWindow(QWidget):
         self.star_limit=QSpinBox();self.star_limit.setRange(100,MAX_MOVING_STARS);self.star_limit.setSingleStep(1000);self.star_limit.setValue(DEFAULT_MAX_STARS)
         self.star_limit.setToolTip('Fewer moving stars make preparation and rendering faster. Unselected stars stay in the photograph. Use Recalculate stars to fit additional stars from the saved image layers.')
         calculation_form.addRow('Moving stars (maximum)',self.star_limit)
+        self.approximate_distances=QCheckBox('Include approximate distances')
+        self.approximate_distances.setToolTip('Add photogeometric estimates (up to 50% fractional interval) and screened Hipparcos-2 parallaxes. First use needs internet. Recalculate stars to update a saved project.')
+        self.approximate_distances.toggled.connect(self.update_calculation_hint)
         self.recalculation=QWidget();recalculation_layout=QVBoxLayout(self.recalculation)
         recalculation_layout.setContentsMargins(0,0,0,0)
         self.calculation_hint=QLabel();self.calculation_hint.setWordWrap(True)
@@ -213,7 +216,11 @@ class FlythroughWindow(QWidget):
         recalculation_layout.addWidget(self.calculation_hint)
         self.recalculate_button=QPushButton('Recalculate stars');self.recalculate_button.setAutoDefault(False)
         self.recalculate_button.clicked.connect(self.recalculate_stars)
-        recalculation_layout.addWidget(self.recalculate_button,alignment=Qt.AlignmentFlag.AlignLeft)
+        calculation_actions=QHBoxLayout()
+        calculation_actions.addWidget(self.recalculate_button)
+        calculation_actions.addWidget(self.approximate_distances)
+        calculation_actions.addStretch()
+        recalculation_layout.addLayout(calculation_actions)
         calculation_form.addRow(self.recalculation);advanced_layout.addRow(self.calculation_settings)
         self.star_limit.valueChanged.connect(self.update_calculation_hint)
         self.solver_settings=QGroupBox('Plate solving (ASTAP)');solver_form=QFormLayout(self.solver_settings)
@@ -316,7 +323,8 @@ class FlythroughWindow(QWidget):
         if source.has_coordinates: source.header()
         self.file_source=source;self.prepared=None;self.reset_target_distance();self.target.clear();self.set_date_info(source.date_info())
         self.star_limit.setValue(DEFAULT_MAX_STARS)
-        self.prepared_star_limit=None;self.prepared_star_count=None
+        self.approximate_distances.setChecked(False)
+        self.prepared_star_limit=None;self.prepared_star_count=None;self.prepared_approximate=None
         self.output.setText(str(source.path.parent/'flythrough'/source.path.stem))
         self.refresh_project()
         self.remember_image()
@@ -589,17 +597,18 @@ class FlythroughWindow(QWidget):
         elif missing:
             self.calculation_hint.setText('Recalculation needs saved layers: '+', '.join(missing)+'.')
         else:
-            summary=(f'Prepared: {self.prepared_star_count:,} moving stars. ' if folder==self.prepared and self.prepared_star_count is not None else '')
+            summary=('Distance coverage changed; recalculate to apply it. ' if self.prepared_approximate is not None and self.approximate_distances.isChecked()!=self.prepared_approximate else '')
+            summary+=(f'Prepared: {self.prepared_star_count:,} moving stars. ' if folder==self.prepared and self.prepared_star_count is not None else '')
             if folder==self.prepared and self.prepared_star_limit is not None and self.star_limit.value()>self.prepared_star_limit:
                 summary+='Recalculate to apply the higher limit. '
-            self.calculation_hint.setText(summary+'Reuses saved image, starless layer and Gaia catalogue. Previous calculations and exports are kept.')
+            self.calculation_hint.setText(summary+'Reuses saved layers and catalogue caches. Keeps previous calculations and exports.')
 
     def recalculate_stars(self):
         try:
             folder=Path(self.output.text()).expanduser().resolve()
             missing=recalculation_missing(folder)
             if missing: raise ValueError('Recalculation needs saved project files: '+', '.join(missing))
-            options=SimpleNamespace(output=str(folder),recalculate=True,max_stars=self.star_limit.value())
+            options=SimpleNamespace(output=str(folder),recalculate=True,max_stars=self.star_limit.value(),approximate_distances=self.approximate_distances.isChecked())
             self.launch(None,None,options)
         except Exception as exc: self.show_problem('Cannot recalculate stars',str(exc))
 
@@ -619,7 +628,8 @@ class FlythroughWindow(QWidget):
             return
         self.prepared=None;self.reset_target_distance();self.output.setText(str(folder));self.refresh_project();self.detect_siril_date()
         self.star_limit.setValue(DEFAULT_MAX_STARS)
-        self.prepared_star_limit=None;self.prepared_star_count=None
+        self.approximate_distances.setChecked(False)
+        self.prepared_star_limit=None;self.prepared_star_count=None;self.prepared_approximate=None
         self.advanced_toggle.setChecked(True)
 
     def append_log(self,message,detail=False):
@@ -740,7 +750,7 @@ class FlythroughWindow(QWidget):
                 self.advanced_toggle.setChecked(True);self.epoch.setFocus()
                 raise ValueError('Enter the observation date in Advanced settings; this image has no DATE-OBS.')
             Time(date)
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),target_info=self.target_info,max_stars=self.star_limit.value(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),target_info=self.target_info,approximate_distances=self.approximate_distances.isChecked(),max_stars=self.star_limit.value(),mode="iterative",
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=str(Path(self.executable.text()).resolve()),ffmpeg=str(Path(self.ffmpeg.text()).resolve()),
                 epoch=str(date),date_info=info,output=str(out),source=source)
@@ -782,7 +792,7 @@ class FlythroughWindow(QWidget):
                 if not date: raise ValueError('Enter the observation date in Advanced settings before preparing the project.')
                 if not self.selected_date_info(): raise ValueError('Enter a valid capture year or date.')
             selected=self.selected_date_info()
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),target_info=self.target_info,max_stars=self.star_limit.value(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),target_info=self.target_info,approximate_distances=self.approximate_distances.isChecked(),max_stars=self.star_limit.value(),mode="iterative",
                 output=str(self.prepared),ffmpeg=self.ffmpeg.text(),reuse=True,
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=self.executable.text(),epoch=selected['value'] if selected else '',date_info=selected)
@@ -824,6 +834,7 @@ class FlythroughWindow(QWidget):
             if self.target_info:self.target_origin.setText(f"{self.target_info['name']} · SIMBAD distance" + (" (approximate)" if self.target_info.get("approximate") else ""))
             self.zoom_mode.setCurrentIndex(max(0,self.zoom_mode.findData(state.get('zoom_mode','independent'))))
             self.star_limit.setValue(state.get('max_stars',DEFAULT_MAX_STARS))
+            self.approximate_distances.setChecked(state.get('approximate_distances',saved_scene.get('distance_coverage',{}).get('enabled',False)))
             if state.get('ffmpeg'): self.ffmpeg.setText(state['ffmpeg'])
             if 'engine' in state:
                 self.engine.setCurrentIndex(0 if state['engine']=='StarXTerminator' else 1)
@@ -843,6 +854,9 @@ class FlythroughWindow(QWidget):
         self.restore_export_links(folder)
         if folder!=self.prepared:
             self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()
+        self.prepared_approximate=saved_scene.get('distance_coverage',{}).get('enabled',False) if saved_scene else None
+        coverage=saved_scene.get('distance_coverage',{})
+        self.calculation_hint.setToolTip('\n'.join(f'{source}: {count:,}' for source,count in coverage.get('by_source',{}).items()))
         self.prepared_star_limit=saved_scene.get('motion_selection',{}).get('limit')
         self.prepared_star_count=len(saved_scene['stars']) if 'stars' in saved_scene else None
         self.prepared=folder;self.output.setText(str(folder));self.refresh_project()

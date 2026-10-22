@@ -8,7 +8,7 @@ from task_progress import StageProgress
 DEFAULT_MAX_STARS=50000
 MAX_MOVING_STARS=50000
 MAX_ITERATIVE_GROUPS=16
-MAX_GROUP_NEIGHBOURS=64
+MAX_GROUP_NEIGHBOURS=96
 
 
 def moving_star_limit(value=DEFAULT_MAX_STARS):
@@ -53,5 +53,8 @@ def limit_scene_stars(scene,limit=DEFAULT_MAX_STARS,progress=lambda message:None
     result=dict(scene,stars=[star for i,star in enumerate(stars) if i in selected],
         background='data:image/png;base64,'+base64.b64encode(output.getvalue()).decode(),
         motion_selection=dict(limit=limit,source_stars=len(stars),moving_stars=limit,method='brightest photographed sprite flux'))
+    if 'distance_coverage' in scene:
+        from distances import coverage_summary
+        result['distance_coverage']=coverage_summary(result['stars'],scene['distance_coverage']['enabled'])
     progress(f'Moving stars limited to {limit:,} of {len(stars):,}; the remainder stay in the photograph.')
     return result,background.astype(float)/255

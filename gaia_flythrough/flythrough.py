@@ -1,9 +1,10 @@
 """Photo-based Gaia fly-through. See README.md."""
 from version import VERSION, created_stamp
-from catalog import get_catalog, check_cancel
+from catalog import get_catalog, check_cancel, write_rows
 from task_progress import StageProgress
 from density import DEFAULT_MAX_STARS, MAX_MOVING_STARS, moving_star_limit
 from motion import motion_scales
+from distances import choose_distance, motion_catalog, coverage_summary
 import argparse
 import base64
 import csv
@@ -121,6 +122,13 @@ def prepare(args, output):
     stage('Loading Gaia catalogue')
     rows = get_catalog(wcs,w,h,getattr(args,'catalog_path',output/'catalog.csv'),args.magnitude,
         progress=progress,cancel=cancel,stage_progress=counter)
+    extended=bool(getattr(args,'approximate_distances',False))
+    if extended:
+        root=Path(getattr(args,'catalog_root',Path(getattr(args,'catalog_path',output/'catalog.csv')).parent))
+        rows=motion_catalog(wcs,w,h,root,args.magnitude,epoch,cancel,progress,counter)
+        # Each calculation retains the exact reference used for its separation.
+        if output.resolve()!=root.resolve():write_rows(output/'catalog-motion.csv',rows)
+    choices=[choose_distance(row,extended,args.max_uncertainty) for row in rows]
     check_cancel(cancel)
     stage('Detecting star peaks')
     residual = np.maximum(photo-starless, 0)
@@ -208,9 +216,7 @@ def prepare(args, output):
     for di,matches in counted(candidates.items(),'Selecting moving star candidates'):
         if len(matches)!=1: continue
         row=rows[matches[0]]
-        median,lo,hi=[number(row,key) for key in ('r_med_geo','r_lo_geo','r_hi_geo')]
-        ruwe=number(row,'ruwe')
-        if not (0<lo<=median<=hi and (hi-lo)/(2*median)<=args.max_uncertainty and np.isfinite(ruwe) and ruwe<=1.4): continue
+        if choices[matches[0]] is None:continue
         eligible.append((di,matches))
     eligible_count=len(eligible)
     if eligible_count>max_stars:
@@ -221,7 +227,8 @@ def prepare(args, output):
     stars, report, rejected = [], [], []
     for di,matches in counted(eligible,'Fitting moving star cores'):
         row = rows[matches[0]]
-        median, lo, hi = [number(row,k) for k in ('r_med_geo','r_lo_geo','r_hi_geo')]
+        estimate=choices[matches[0]]
+        median,lo,hi=[estimate[k] for k in ('distance_pc','lower_pc','upper_pc')]
         ruwe = number(row,'ruwe')
         x,y,label,sl = detections[di]
         if dynamic:
@@ -245,13 +252,15 @@ def prepare(args, output):
         depth=median*np.cos(center.separation(direction).rad)
         stars.append(dict(x=x,y=y,depth=depth,ax=x-sl[1].start,ay=y-sl[0].start,
             w=patch.shape[1],h=patch.shape[0],image=png_data(patch),source_id=row['source_id'],
-            distance_pc=median,lower_pc=lo,upper_pc=hi,core_sigma=sigma))
+            **estimate,core_sigma=sigma))
         report.append(dict(source_id=row['source_id'],x=x,y=y,distance_pc=median,
-            lower_pc=lo,upper_pc=hi,depth_pc=depth,ruwe=ruwe))
+            lower_pc=lo,upper_pc=hi,depth_pc=depth,ruwe=ruwe,distance_source=estimate['distance_source'],distance_approximate=estimate['distance_approximate']))
         continue
     if not stars:
         raise ValueError('No unambiguous stars with sufficiently reliable distances matched. Check orientation, WCS, epoch and alignment.')
     stage('Saving prepared star field')
+    coverage=coverage_summary(stars,extended)
+    (output/'distance_coverage.json').write_text(json.dumps(coverage,indent=2))
     with (output/'matched_stars.csv').open('w') as f:
         writer=csv.DictWriter(f,fieldnames=list(report[0]));writer.writeheader();writer.writerows(report)
     with (output/'rejected_blends.csv').open('w') as f:
@@ -259,6 +268,7 @@ def prepare(args, output):
     print(f'{len(stars)} moving stars from {len(detections)} detected peaks; {split_count} connected islands deblended. Others remain in background.')
     return dict(width=w,height=h,background=png_data(background),stars=stars,extraction_version=4,
         prepared_with_version=VERSION,prepared_at=created_stamp(),
+        motion_catalog='catalog-motion.csv' if extended else 'catalog.csv',distance_coverage=coverage,
         motion_selection=dict(limit=max_stars,eligible_candidates=eligible_count,fitted_candidates=len(eligible),moving_stars=len(stars),method='brightest photographed peak'),
         mode='dynamic' if dynamic else 'natural',
         label=('Dynamic: Gaia-based patch depth; blended neighbours may share motion' if dynamic else 'Natural: Gaia distances; fitted cores; complex bright stars remain flat')), background
@@ -377,6 +387,7 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--travel',type=float,default=30);p.add_argument('--zoom',type=float,default=1.08)
     p.add_argument('--magnitude',type=float,default=18)
+    p.add_argument('--approximate-distances',action='store_true',help='Include screened Hipparcos-2 and photogeometric/extended-distance estimates.')
     p.add_argument('--max-stars',type=int,default=DEFAULT_MAX_STARS,help=f'Maximum moving star candidates to fit (1–{MAX_MOVING_STARS}).')
     p.add_argument('--threshold',type=float,default=.008)
     p.add_argument('--match-pixels',type=float,default=3)

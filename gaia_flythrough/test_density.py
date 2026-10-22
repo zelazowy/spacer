@@ -32,6 +32,10 @@ class DensityTests(unittest.TestCase):
         np.testing.assert_array_equal(reconstruct(limited),reconstruct(scene))
         self.assertEqual(scene,original);self.assertEqual(limited['prepared_with_version'],'0.9.8')
         np.testing.assert_array_equal(np.uint8(np.rint(bg*255)),decode_layer(limited['background']))
+        scene['distance_coverage']=dict(enabled=True)
+        scene['stars'][1].update(distance_source='Gaia photogeometric',distance_approximate=True)
+        limited,_=limit_scene_stars(scene,1)
+        self.assertEqual(limited['distance_coverage'],dict(enabled=True,by_source={'Gaia photogeometric':1},moving_stars=1,approximate_stars=1))
 
     def test_invalid_limit_and_cancellation_do_not_mutate_scene(self):
         self.assertEqual(moving_star_limit(),50000)
