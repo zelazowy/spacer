@@ -40,6 +40,24 @@ class PipelineTests(unittest.TestCase):
                 prepare_field.assert_not_called();engine.assert_not_called()
                 self.assertEqual(render.call_count,2)
 
+    def test_target_distance_export_reuses_field_and_records_geometry(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder)
+            scene=dict(stars=[],width=16,height=12,background=png_data(np.zeros((12,16,3))),extraction_version=6,iterative_revision=2)
+            (out/'scene_iterative.json').write_text(json.dumps(scene))
+            options=SimpleNamespace(seconds=20,zoom=30,ffmpeg='ffmpeg',zoom_mode='target_distance',target_distance_pc=400,travel_pc=80)
+            with patch('siril_pipeline.render_video') as render,patch('siril_pipeline.prepare') as prepare:
+                render_prepared(out,options)
+                prepare.assert_not_called()
+                self.assertEqual(render.call_args.args[2].zoom_mode,'target_distance')
+                self.assertEqual(render.call_args.args[2].travel,80)
+            meta=json.loads((out/(options.result_stem+'.json')).read_text())
+            self.assertEqual(meta['final_zoom'],1.25)
+            self.assertEqual(meta['target_distance_pc'],400)
+            self.assertIn('target400pc_travel80pc',options.result_stem)
+            self.assertEqual(read_project(out)['zoom_mode'],'target_distance')
+            self.assertIn('"target_distance"',(out/(options.result_stem+'.html')).read_text())
+
     def test_old_iterative_cache_upgrades_from_saved_natural_field(self):
         with tempfile.TemporaryDirectory() as folder:
             out=Path(folder)

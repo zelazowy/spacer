@@ -171,3 +171,12 @@ python -m unittest discover -s gaia_flythrough -p "test_*.py"
 See [DEVELOPMENT.md](DEVELOPMENT.md) for architecture, current limitations and a prompt for continuing development. Release history: [CHANGELOG](gaia_flythrough/CHANGELOG.md).
 
 The latest [interface audit](INTERFACE_AUDIT.md) records inspected states, fixed usability issues and validation limits.
+
+
+## Target-distance perspective (0.12.0)
+
+In Flight, choose **Perspective from target distance**, then enter **Target distance** and **Travel distance** in parsecs. No target distance is inferred. The target/background is treated as a flat plane: 400 pc with 80 pc travel yields 1.25× enlargement. Each moving star uses its own distance, without adding independent zoom a second time. The photographed stellar PSF stays fixed. Unseparated background stars share the assumed target plane; this is a photographic approximation, not a complete 3D reconstruction.
+
+**Independent zoom** remains the default; its Final zoom control applies the familiar extra enlargement. Both modes now expose travel distance. Travel must be less than target distance in perspective mode. Settings are saved with the project and new exports; existing prepared fields and older exports remain intact.
+
+Bright stationary stars can lack usable catalogue distances, fail the astrometric/uncertainty screens, or be deferred by image separation (unresolved companions, overlapping groups, fit failure or work limits). We do not infer distance from photographed brightness or relax separation just to animate more stars. Supplementary bright-star catalogues are not yet integrated.

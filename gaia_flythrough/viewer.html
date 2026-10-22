@@ -22,19 +22,26 @@ ctx.setTransform(previewScale,0,0,previewScale,0,0);
 const load=src=>new Promise(resolve=>{const i=new Image;i.onload=()=>resolve(i);i.src=src});
 let bg,sprites,running=false,last;
 function ease(t){const r=EASERAMP;if(t>1-r)return 1-ease(1-t);if(t<r)return (t/2-r/(2*Math.PI)*Math.sin(Math.PI*t/r))/(1-r);return (t-r/2)/(1-r)}
-function draw(){if(!bg)return;let t=ease(running?playPosition:+position.value);const move=+travel.value*t,z=1+(+zoom.value-1)*t,cx=scene.width/2,cy=scene.height/2;
+const physical=scene.zoom_mode==='target_distance',distance=scene.target_distance_pc;
+if(physical){travel.max=Math.min(distance*(1-1e-9),Math.max(+travel.value,distance*.99));zoom.disabled=true;}
+function scales(t){
+ const move=+travel.value*t;
+ const z=physical?distance/(distance-move):1+(+zoom.value-1)*t;
+ return {move,z,sz:physical?1:z};
+}
+function draw(){if(!bg)return;let t=ease(running?playPosition:+position.value);const {move,z,sz}=scales(t),cx=scene.width/2,cy=scene.height/2;
 ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
 ctx.fillStyle='black';ctx.fillRect(0,0,scene.width,scene.height);ctx.drawImage(bg,cx-cx*z,cy-cy*z,scene.width*z,scene.height*z);
-ctx.globalCompositeOperation='lighter';scene.stars.forEach((s,i)=>{if(s.depth<=move)return;const k=s.depth/(s.depth-move)*z;
+ctx.globalCompositeOperation='lighter';scene.stars.forEach((s,i)=>{if(s.depth<=move)return;const k=s.depth/(s.depth-move)*sz;
 // Fixed photographed PSF; only the independent zoom changes sprite size.
-const x=cx+(s.x-cx)*k,y=cy+(s.y-cy)*k;ctx.drawImage(sprites[i],x-s.ax*z,y-s.ay*z,s.w*z,s.h*z)});ctx.globalCompositeOperation='source-over';
-if(document.getElementById('patches').checked){ctx.strokeStyle='#00ff88';ctx.lineWidth=1/previewScale;scene.stars.forEach(s=>{if(s.depth<=move)return;const k=s.depth/(s.depth-move)*z;ctx.strokeRect(cx+(s.x-cx)*k-s.ax*z,cy+(s.y-cy)*k-s.ay*z,s.w*z,s.h*z)})}
-document.getElementById('info').textContent=`${scene.label} · ${scene.stars.length} moving stars · travel ${move.toFixed(1)} pc · zoom ${z.toFixed(2)}×`;}
+const x=cx+(s.x-cx)*k,y=cy+(s.y-cy)*k;ctx.drawImage(sprites[i],x-s.ax*sz,y-s.ay*sz,s.w*sz,s.h*sz)});ctx.globalCompositeOperation='source-over';
+if(document.getElementById('patches').checked){ctx.strokeStyle='#00ff88';ctx.lineWidth=1/previewScale;scene.stars.forEach(s=>{if(s.depth<=move)return;const k=s.depth/(s.depth-move)*sz;ctx.strokeRect(cx+(s.x-cx)*k-s.ax*sz,cy+(s.y-cy)*k-s.ay*sz,s.w*sz,s.h*sz)})}
+document.getElementById('info').textContent=`${scene.label} · ${scene.stars.length} moving stars · ${physical ? "Target-distance perspective" : "Independent zoom"} · travel ${move.toFixed(1)} pc · zoom ${z.toFixed(2)}×`;}
 for(const e of [position,travel,zoom])e.oninput=()=>{running=false;draw()};
 document.getElementById('patches').onchange=draw;
 canvas.onclick=event=>{running=false;const rect=canvas.getBoundingClientRect(),px=(event.clientX-rect.left)*scene.width/rect.width,py=(event.clientY-rect.top)*scene.height/rect.height;
-const t=ease(+position.value),move=+travel.value*t,z=1+(+zoom.value-1)*t,cx=scene.width/2,cy=scene.height/2;
-let best=null,distance=Infinity;scene.stars.forEach(s=>{if(s.depth<=move)return;const k=s.depth/(s.depth-move)*z,dx=px-(cx+(s.x-cx)*k),dy=py-(cy+(s.y-cy)*k),d=Math.hypot(dx,dy);if(d<distance){best=s;distance=d}});
+const t=ease(+position.value),{move,z,sz}=scales(t),cx=scene.width/2,cy=scene.height/2;
+let best=null,distance=Infinity;scene.stars.forEach(s=>{if(s.depth<=move)return;const k=s.depth/(s.depth-move)*sz,dx=px-(cx+(s.x-cx)*k),dy=py-(cy+(s.y-cy)*k),d=Math.hypot(dx,dy);if(d<distance){best=s;distance=d}});
 if(best){document.getElementById('selected').textContent=`Gaia ${best.source_id||'ID unavailable in this older scene'} · distance ${best.distance_pc?.toFixed(1)||best.depth.toFixed(1)} pc · interval ${best.lower_pc?.toFixed(1)||'?'}–${best.upper_pc?.toFixed(1)||'?'} pc · original pixel ${best.x.toFixed(1)}, ${best.y.toFixed(1)} · extracted patch ${best.w}×${best.h} px`;
 const sprite=document.getElementById('sprite');sprite.src=best.image;sprite.style.display='block'}draw()};
 let playPosition=0;

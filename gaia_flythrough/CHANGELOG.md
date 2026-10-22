@@ -1,3 +1,10 @@
+# 0.12.0 — 2026-10-22
+
+- Add optional target-distance perspective in the shared Siril/standalone Flight panel, with target and travel distances in parsecs.
+- Background magnification follows D/(D-s). Stars retain their own perspective displacement without a second zoom factor; photographed PSF sizes stay fixed in this mode.
+- Keep independent zoom as default. Save motion settings in projects, preview scenes, filenames and export metadata; reuse existing extraction.
+- Reject non-finite/negative travel and target arrival/crossing. Target distance is a user-supplied flat-plane assumption, not an inferred distance.
+
 # Gaia Flythrough releases
 
 ## 0.11.3 — 2026-10-18

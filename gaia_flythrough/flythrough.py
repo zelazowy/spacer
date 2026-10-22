@@ -3,6 +3,7 @@ from version import VERSION, created_stamp
 from catalog import get_catalog, check_cancel
 from task_progress import StageProgress
 from density import DEFAULT_MAX_STARS, MAX_MOVING_STARS, moving_star_limit
+from motion import motion_scales
 import argparse
 import base64
 import csv
@@ -334,19 +335,19 @@ def render_video(scene, background, args, path):
             ease_seconds=getattr(args,'ease_seconds',None)
             ramp=.05 if ease_seconds is None else ease_seconds/args.seconds
             t=ease_progress(frame/max(1,round(args.seconds*args.fps)-1),ramp)
-            z=1+(args.zoom-1)*t;move=args.travel*t
+            z,star_zoom,move=motion_scales(t,args.zoom,args.travel,getattr(args,'zoom_mode','independent'),getattr(args,'target_distance_pc',0))
             offsets=[scene['height']/2*(1-1/z),scene['width']/2*(1-1/z),0]
             a=ndimage.affine_transform(background,[1/(scale*z),1/(scale*z),1],
                 offset=offsets,output_shape=(h,w,3),order=1)
             for s,patch in zip(video_stars,sprites):
                 if s['depth']<=move:
                     continue
-                k=s['depth']/(s['depth']-move)*z
-                x=w/2+(s['x']-w/2)*k-s['ax']*z;y=h/2+(s['y']-h/2)*k-s['ay']*z
-                if x>=w or y>=h or x+s['w']*z<0 or y+s['h']*z<0:
+                k=s['depth']/(s['depth']-move)*star_zoom
+                x=w/2+(s['x']-w/2)*k-s['ax']*star_zoom;y=h/2+(s['y']-h/2)*k-s['ay']*star_zoom
+                if x>=w or y>=h or x+s['w']*star_zoom<0 or y+s['h']*star_zoom<0:
                     continue
                 # Continuous subpixel placement avoids the old one-pixel jumps.
-                ix,iy,scaled=sample_sprite(patch,x,y,z,viewport=(w,h))
+                ix,iy,scaled=sample_sprite(patch,x,y,star_zoom,viewport=(w,h))
                 ph,pw=scaled.shape[:2]
                 xa,ya=max(0,ix),max(0,iy);xb,yb=min(w,ix+pw),min(h,iy+ph)
                 if xb>xa and yb>ya:

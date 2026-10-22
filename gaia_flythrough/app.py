@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import threading
 import traceback
 
+from motion import validate_motion
 from version import VERSION, field_description
 from preferences import Preferences
 from photo_date import infer_photo_date, date_info
@@ -123,6 +124,26 @@ class FlythroughWindow(QWidget):
         self.zoom=ZoomSpinBox();self.zoom.setDecimals(3);self.zoom.setRange(1,101)
         self.zoom.setSingleStep(.1);self.zoom.setValue(1.3);self.zoom.setSuffix('×')
         form.addRow('Final zoom',self.zoom)
+        self.zoom_mode=QComboBox()
+        self.zoom_mode.addItem('Independent zoom','independent')
+        self.zoom_mode.addItem('Perspective from target distance','target_distance')
+        form.addRow('Zoom mode',self.zoom_mode)
+        self.travel_pc=QDoubleSpinBox();self.travel_pc.setRange(0,1e12);self.travel_pc.setDecimals(3);self.travel_pc.setValue(80);self.travel_pc.setSuffix(' pc')
+        form.addRow('Travel distance',self.travel_pc)
+        self.target_distance_pc=QDoubleSpinBox();self.target_distance_pc.setRange(.001,1e12);self.target_distance_pc.setDecimals(3);self.target_distance_pc.setValue(400);self.target_distance_pc.setSuffix(' pc')
+        form.addRow('Target distance',self.target_distance_pc)
+        self.target_distance_pc.setToolTip('User-supplied distance to the flat background plane. Must exceed travel distance; no target distance is inferred.')
+        self.perspective_note=QLabel();self.perspective_note.setWordWrap(True);form.addRow(self.perspective_note)
+        def update_motion_controls():
+            physical=self.zoom_mode.currentData()=='target_distance'
+            self.zoom.setEnabled(not physical);self.target_distance_pc.setEnabled(physical)
+            d,s=self.target_distance_pc.value(),self.travel_pc.value()
+            self.perspective_note.setVisible(physical)
+            self.perspective_note.setText(f'Derived final enlargement: {d/(d-s):.4g}×. Final zoom above is unused.' if d>s else 'Travel must be less than target distance.')
+        self.zoom_mode.currentIndexChanged.connect(update_motion_controls)
+        self.travel_pc.valueChanged.connect(update_motion_controls)
+        self.target_distance_pc.valueChanged.connect(update_motion_controls);update_motion_controls()
+
         form.addRow(QLabel('24 fps · up to 1920 px wide · Iterative scene'))
         layout.addWidget(self.flight_group)
 
@@ -591,13 +612,15 @@ class FlythroughWindow(QWidget):
                 self.advanced_toggle.setChecked(True);self.epoch.setFocus()
                 raise ValueError('Enter the observation date in Advanced settings; this image has no DATE-OBS.')
             Time(date)
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),max_stars=self.star_limit.value(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),max_stars=self.star_limit.value(),mode="iterative",
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=str(Path(self.executable.text()).resolve()),ffmpeg=str(Path(self.ffmpeg.text()).resolve()),
                 epoch=str(date),date_info=info,output=str(out),source=source)
             self.launch(pixels,header,options)
         except Exception as exc: self.show_problem('Cannot render flight',str(exc))
     def launch(self,pixels,header,options):
+            if not getattr(options,'solve',False) and not getattr(options,'recalculate',False):
+                validate_motion(getattr(options,'zoom_mode','independent'),getattr(options,'travel_pc',80),getattr(options,'target_distance_pc',400))
             self.prepared=Path(options.output).expanduser().resolve()
             self.result=None;self.preview.setEnabled(False);self.video.setEnabled(False)
             self.start.setEnabled(False);self.advanced_toggle.setEnabled(False);self.cancel_button.setEnabled(True);self.cancel_button.show()
@@ -631,7 +654,7 @@ class FlythroughWindow(QWidget):
                 if not date: raise ValueError('Enter the observation date in Advanced settings before preparing the project.')
                 if not self.selected_date_info(): raise ValueError('Enter a valid capture year or date.')
             selected=self.selected_date_info()
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),max_stars=self.star_limit.value(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),max_stars=self.star_limit.value(),mode="iterative",
                 output=str(self.prepared),ffmpeg=self.ffmpeg.text(),reuse=True,
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=self.executable.text(),epoch=selected['value'] if selected else '',date_info=selected)
@@ -658,6 +681,9 @@ class FlythroughWindow(QWidget):
         if restore:
             self.seconds.setValue(state.get('seconds',60))
             self.zoom.setValue(1+state.get('zoom',30)/100)
+            self.travel_pc.setValue(state.get('travel_pc',80))
+            self.target_distance_pc.setValue(state.get('target_distance_pc',400))
+            self.zoom_mode.setCurrentIndex(max(0,self.zoom_mode.findData(state.get('zoom_mode','independent'))))
             self.star_limit.setValue(state.get('max_stars',DEFAULT_MAX_STARS))
             if state.get('ffmpeg'): self.ffmpeg.setText(state['ffmpeg'])
             if 'engine' in state:

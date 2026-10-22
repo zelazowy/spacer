@@ -135,3 +135,8 @@ Interface audit (0.11.2): see INTERFACE_AUDIT.md. The audit hid first-preparatio
 Folder-picker audit: accept existing empty output directories for new preparation/ASTAP solves, since native folder selection creates/selects a directory. Keep nonempty unrelated folders protected, and recheck before publishing a solve. Verify empty-folder creation in desktop, both preparation engines and solving coverage.
 
 Stable Advanced layout (0.11.3, explicit user preference): do not hide preparation or recalculation sections when switching between new, partial and prepared projects. Keep positions and explanatory-label heights stable; disable inapplicable controls and explain reuse. The user values layout stability over hiding unused controls. Preserve the separately requested exception for solver controls, which appear only for unsolved inputs. Show recorded engine/executable values for all saved stages. Changing an executable path does not alter cached starless pixels or prepared stars; recalculation reuses those pixels. A regression checks exact Advanced geometry across new, solved, matching, refinement and ready stages.
+
+
+## 0.12.0 motion geometry
+
+motion.py validates camera settings and computes background and stellar zoom independently. Target-distance mode uses background D/(D-s) and stellar extra zoom=1; stellar positions already include their own depth/(depth-s) perspective. Do not multiply the latter by the background scale. Preserve independent mode unchanged. Settings zoom_mode/travel_pc/target_distance_pc flow through the shared UI, project state, embedded scenes and JSON exports. The target plane is user supplied; stationary stars remain on that plane. No new catalogue fallback was introduced.

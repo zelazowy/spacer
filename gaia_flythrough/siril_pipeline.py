@@ -14,6 +14,7 @@ from PIL import Image
 from astropy.io import fits
 from astropy.wcs import WCS
 import tifffile
+from motion import validate_motion
 from flythrough import prepare, render_video
 from catalog import validate_field
 from density import DEFAULT_MAX_STARS, moving_star_limit, limit_scene_stars
@@ -285,9 +286,15 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     out=Path(out).resolve()
     cancel=cancel or threading.Event()
     mode='iterative'
+    zoom_mode=getattr(options,'zoom_mode','independent')
+    travel=float(getattr(options,'travel_pc',80))
+    target_distance=float(getattr(options,'target_distance_pc',400))
+    validate_motion(zoom_mode,travel,target_distance)
+    motion_settings=dict(zoom_mode=zoom_mode,travel_pc=travel,target_distance_pc=target_distance)
     max_stars=moving_star_limit(getattr(options,'max_stars',read_project(out).get('max_stars',DEFAULT_MAX_STARS)))
     active=calculation_folder(out)
     save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,max_stars=max_stars)
+    save_project(out,**motion_settings)
     if scene is None:
         if mode=='iterative':
             path=active/'scene_iterative.json'
@@ -315,24 +322,29 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
         raise ValueError('Duration must exceed 3 seconds and zoom must be between 0 and 10000%.')
     def token(value): return format(float(value),'g').replace('.','p')
     base=f"flythrough_v{VERSION}_{mode}_{token(options.seconds)}s_zoom{token(options.zoom)}pct_24fps"
+    if zoom_mode=='target_distance':
+        base=f"flythrough_v{VERSION}_{mode}_{token(options.seconds)}s_target{token(target_distance)}pc_travel{token(travel)}pc_24fps"
+    elif travel!=80:
+        base+=f'_travel{token(travel)}pc'
     stem=base;index=2
     while any((out/(stem+ext)).exists() for ext in ('.mp4','.html','.json')):
         stem=f'{base}_{index:02d}';index+=1
     options.result_stem=stem
-    scene=dict(scene,render_version=VERSION,render_created_at=created_stamp(),render_name=stem)
-    args=argparse.Namespace(seconds=options.seconds,zoom=1+options.zoom/100,travel=80,
+    scene=dict(scene,**motion_settings,render_version=VERSION,render_created_at=created_stamp(),render_name=stem)
+    args=argparse.Namespace(seconds=options.seconds,zoom=1+options.zoom/100,travel=travel,zoom_mode=zoom_mode,target_distance_pc=target_distance,
         fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress,ffmpeg=options.ffmpeg,
         frame_progress=getattr(options,'frame_progress',None))
     progress(f'Reusing prepared field: {len(scene["stars"])} stars. Creating {stem}.mp4')
     template=Path(__file__).with_name('viewer.html').read_text()
-    html=template.replace('EASERAMP',str(1.5/args.seconds)).replace('DURATION',str(args.seconds*1000)).replace('MAXTRAVEL','160').replace('TRAVEL','80').replace('MAXZOOM',str(max(11,args.zoom))).replace('ZOOM',str(args.zoom)).replace('SCENE',json.dumps(scene,allow_nan=False))
+    html=template.replace('EASERAMP',str(1.5/args.seconds)).replace('DURATION',str(args.seconds*1000)).replace('MAXTRAVEL',str(max(160,travel*2))).replace('TRAVEL',str(travel)).replace('MAXZOOM',str(max(11,args.zoom))).replace('ZOOM',str(args.zoom)).replace('SCENE',json.dumps(scene,allow_nan=False))
     (out/(stem+'.html')).write_text(html)
     (out/(stem+'.json')).write_text(json.dumps(dict(tool_version=VERSION,created_at=scene['render_created_at'],render_name=stem,
         field_version=scene.get('prepared_with_version','unversioned'),field_created_at=scene.get('prepared_at'),date_info=scene.get('date_info'),
         extraction_version=scene.get('extraction_version'),iterative_revision=scene.get('iterative_revision'),
         calculation_path=read_project(out).get('calculation_path'),
         duration_seconds=args.seconds,fps=24,max_stars=max_stars,motion_selection=scene.get('motion_selection'),iterative_limits=scene.get('iterative_limits'),
-        final_zoom=args.zoom,travel_pc=80,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
+        final_zoom=(target_distance/(target_distance-travel) if zoom_mode=='target_distance' else args.zoom),
+        zoom_mode=zoom_mode,target_distance_pc=target_distance,travel_pc=travel,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
     render_video(scene,background,args,out/(stem+'.mp4'))
     save_project(out,stage='ready',seconds=options.seconds,zoom=options.zoom,
         ffmpeg=options.ffmpeg,last_render=stem)
