@@ -180,3 +180,11 @@ In Flight, choose **Perspective from target distance**, then enter **Target dist
 **Independent zoom** remains the default; its Final zoom control applies the familiar extra enlargement. Both modes now expose travel distance. Travel must be less than target distance in perspective mode. Settings are saved with the project and new exports; existing prepared fields and older exports remain intact.
 
 Bright stationary stars can lack usable catalogue distances, fail the astrometric/uncertainty screens, or be deferred by image separation (unresolved companions, overlapping groups, fit failure or work limits). We do not infer distance from photographed brightness or relax separation just to animate more stars. Supplementary bright-star catalogues are not yet integrated.
+
+## Catalogue target picker (0.13.0)
+
+Use **Find targets in this field…** in Flight after opening a solved image or project. An optional online SIMBAD query lists supported nebulae, clusters and galaxies whose catalogue centres fall inside the WCS image footprint. These are catalogue associations, not detections or proof an object is visible. Only field coordinates are sent; image pixels stay local.
+
+Choose an individual published distance measurement. The picker shows its method, errors when provided, quality flag and bibliography code. Several measurements can disagree; SPACER neither chooses a preferred paper nor converts redshift to distance. Entries without a usable distance support manual entry. Selected measurements switch to target-distance perspective. Editing the distance clears catalogue provenance. Project/preview/JSON retain the selection and reference; reopening a saved project needs no query to restore the chosen distance.
+
+Lookup is limited to 6° radius and rejects overflow rather than silently returning a partial result. Objects whose centres lie outside the frame and unsupported object types are excluded. Travel must still be smaller than the selected distance.

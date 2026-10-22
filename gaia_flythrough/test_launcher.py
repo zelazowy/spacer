@@ -460,6 +460,22 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(w.star_limit.value(),50000);self.assertFalse(w.preparation.isHidden())
         finally: w.close()
 
+    def test_target_selection_and_manual_override(self):
+        w=self.window
+        row=dict(name='M45',distance_pc=135,object_type='OpC',method='parallax',
+            quality=None,bibcode='test-reference',minus_error_pc=1,plus_error_pc=1)
+        from PyQt6.QtWidgets import QDialog
+        with patch.object(w,'target_header',return_value=None),patch('targets.field_query',return_value=('field',None,None,None)),patch.object(QDialog,'exec',return_value=QDialog.DialogCode.Accepted):
+            w.target_lookup_query='field'
+            w.show_targets([row])
+        self.assertEqual(w.target_distance_pc.value(),135)
+        self.assertEqual(w.zoom_mode.currentData(),'target_distance')
+        self.assertEqual(w.target_info['name'],'M45')
+        self.assertIn('test-reference',w.target_origin.text())
+        w.target_distance_pc.setValue(140)
+        self.assertIsNone(w.target_info)
+        self.assertEqual(w.target_origin.text(),'Manual target distance')
+
     def test_cancel_restores_previous_export_links(self):
         saved=self.folder/'with-export';saved.mkdir()
         (saved/'project.json').write_text(json.dumps(dict(stage='ready',last_render='previous')))

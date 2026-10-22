@@ -140,3 +140,7 @@ Stable Advanced layout (0.11.3, explicit user preference): do not hide preparati
 ## 0.12.0 motion geometry
 
 motion.py validates camera settings and computes background and stellar zoom independently. Target-distance mode uses background D/(D-s) and stellar extra zoom=1; stellar positions already include their own depth/(depth-s) perspective. Do not multiply the latter by the background scale. Preserve independent mode unchanged. Settings zoom_mode/travel_pc/target_distance_pc flow through the shared UI, project state, embedded scenes and JSON exports. The target plane is user supplied; stationary stars remain on that plane. No new catalogue fallback was introduced.
+
+## 0.13.0 catalogue target selection
+
+targets.py queries SIMBAD basic + mesDistance (verified TAP schema). Query a padded circumscribed cone, filter actual WCS pixel inclusion, preserve individual measurements rather than averaging them. Supported extended-object classes only; no centre-outside-frame objects. TOP/MAXREC overflow is rejected. TargetWorker keeps network work off the GUI thread; stale field responses are discarded and close waits for bounded lookup. target_info is render/project provenance, not Gaia stellar-depth data. Selection uses the existing optical-axis camera geometry; it does not re-centre the camera on the selected object.

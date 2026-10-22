@@ -290,7 +290,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     travel=float(getattr(options,'travel_pc',80))
     target_distance=float(getattr(options,'target_distance_pc',400))
     validate_motion(zoom_mode,travel,target_distance)
-    motion_settings=dict(zoom_mode=zoom_mode,travel_pc=travel,target_distance_pc=target_distance)
+    motion_settings=dict(zoom_mode=zoom_mode,travel_pc=travel,target_distance_pc=target_distance,target_info=getattr(options,'target_info',None))
     max_stars=moving_star_limit(getattr(options,'max_stars',read_project(out).get('max_stars',DEFAULT_MAX_STARS)))
     active=calculation_folder(out)
     save_project(out,seconds=options.seconds,zoom=options.zoom,ffmpeg=options.ffmpeg,max_stars=max_stars)
@@ -344,7 +344,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
         calculation_path=read_project(out).get('calculation_path'),
         duration_seconds=args.seconds,fps=24,max_stars=max_stars,motion_selection=scene.get('motion_selection'),iterative_limits=scene.get('iterative_limits'),
         final_zoom=(target_distance/(target_distance-travel) if zoom_mode=='target_distance' else args.zoom),
-        zoom_mode=zoom_mode,target_distance_pc=target_distance,travel_pc=travel,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
+        zoom_mode=zoom_mode,target_info=motion_settings['target_info'],target_distance_pc=target_distance,travel_pc=travel,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
     render_video(scene,background,args,out/(stem+'.mp4'))
     save_project(out,stage='ready',seconds=options.seconds,zoom=options.zoom,
         ffmpeg=options.ffmpeg,last_render=stem)

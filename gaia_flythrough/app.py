@@ -30,6 +30,18 @@ class ZoomSpinBox(QDoubleSpinBox):
         return self.locale().toString(value,'f',3).rstrip('0').rstrip(self.locale().decimalPoint())
 
 
+class TargetWorker(QThread):
+    completed=pyqtSignal(object)
+    failed=pyqtSignal(str)
+    def __init__(self,header):
+        super().__init__();self.header=header
+    def run(self):
+        try:
+            from targets import find_targets
+            self.completed.emit(find_targets(self.header))
+        except Exception as exc:self.failed.emit(str(exc))
+
+
 class Worker(QThread):
     progress=pyqtSignal(str,bool)
     frame_progress=pyqtSignal(int,int,float)
@@ -72,6 +84,7 @@ class FlythroughWindow(QWidget):
         self.siril=siril;self.file_source=None;self.worker=None;self.result=None;self.prepared=None;self.result_stem=None
         self.preferences=Preferences()
         self.auto_date_info=None
+        self.target_worker=None;self.target_info=None
         self.prepared_star_limit=None;self.prepared_star_count=None
         self.render_succeeded=False
         self.setWindowTitle(f'SPACER — v{VERSION}')
@@ -132,6 +145,12 @@ class FlythroughWindow(QWidget):
         form.addRow('Travel distance',self.travel_pc)
         self.target_distance_pc=QDoubleSpinBox();self.target_distance_pc.setRange(.001,1e12);self.target_distance_pc.setDecimals(3);self.target_distance_pc.setValue(400);self.target_distance_pc.setSuffix(' pc')
         form.addRow('Target distance',self.target_distance_pc)
+        self.find_targets_button=QPushButton('Find targets in this field…')
+        self.find_targets_button.setToolTip('Online SIMBAD lookup using the plate solution. Catalogue positions in the frame, not detections in the image.')
+        self.find_targets_button.clicked.connect(self.lookup_targets)
+        form.addRow(self.find_targets_button)
+        self.target_origin=QLabel('Manual target distance');self.target_origin.setWordWrap(True);form.addRow(self.target_origin)
+        self.target_distance_pc.valueChanged.connect(self.clear_target_origin)
         self.target_distance_pc.setToolTip('User-supplied distance to the flat background plane. Must exceed travel distance; no target distance is inferred.')
         self.perspective_note=QLabel();self.perspective_note.setWordWrap(True);form.addRow(self.perspective_note)
         def update_motion_controls():
@@ -281,13 +300,79 @@ class FlythroughWindow(QWidget):
         source=FileImageSource(path,wcs_path)
         # Validate the header before changing the selected project.
         if source.has_coordinates: source.header()
-        self.file_source=source;self.prepared=None;self.target.clear();self.set_date_info(source.date_info())
+        self.file_source=source;self.prepared=None;self.clear_target_origin();self.target.clear();self.set_date_info(source.date_info())
         self.star_limit.setValue(DEFAULT_MAX_STARS)
         self.prepared_star_limit=None;self.prepared_star_count=None
         self.output.setText(str(source.path.parent/'flythrough'/source.path.stem))
         self.refresh_project()
         self.remember_image()
         if Path(self.output.text()).is_dir() and any(Path(self.output.text()).iterdir()): self.use_prepared(Path(self.output.text()))
+
+    def clear_target_origin(self,*_):
+        self.target_info=None
+        self.target_origin.setText('Manual target distance')
+
+    def target_header(self):
+        from astropy.io import fits
+        if self.prepared and (self.prepared/'source_wcs.fits').exists():
+            return fits.getheader(self.prepared/'source_wcs.fits')
+        if self.siril:return parse_header(self.siril.get_image_fits_header())
+        if self.file_source:return self.file_source.header()
+        raise ValueError('Open a plate-solved image or saved project first.')
+
+    def lookup_targets(self):
+        try:
+            if self.worker and self.worker.isRunning():raise ValueError('Wait for processing to finish.')
+            header=self.target_header()
+            from targets import field_query
+            query,*_=field_query(header)
+            self.target_lookup_query=query
+            self.target_worker=TargetWorker(header)
+            self.find_targets_button.setEnabled(False);self.find_targets_button.setText('Looking up SIMBAD…')
+            self.target_worker.completed.connect(self.show_targets)
+            self.target_worker.failed.connect(lambda message:self.show_problem('Target lookup failed',message))
+            self.target_worker.finished.connect(self.target_lookup_finished)
+            self.target_worker.start()
+        except Exception as exc:self.show_problem('Cannot find targets',str(exc))
+
+    def target_lookup_finished(self):
+        self.find_targets_button.setText('Find targets in this field…');self.find_targets_button.setEnabled(True)
+
+    def show_targets(self,rows):
+        from targets import field_query
+        try:
+            if field_query(self.target_header())[0]!=self.target_lookup_query:
+                self.show_problem('Field changed','The image changed during lookup. Find targets again.');return
+        except Exception:return
+        if not rows:
+            self.show_problem('No catalogue targets','No supported nebula, cluster or galaxy centres were found in this frame. You can enter a distance manually.');return
+        dialog=QDialog(self);dialog.setWindowTitle('Catalogue targets in the solved field')
+        layout=QVBoxLayout(dialog)
+        note=QLabel('SIMBAD catalogue positions, not image detections. Choose a published measurement; measurements may disagree. No distance is inferred from redshift.')
+        note.setWordWrap(True);layout.addWidget(note)
+        choice=QComboBox()
+        for row in rows:
+            distance=f"{row['distance_pc']:g} pc" if row['distance_pc'] else 'distance unavailable — enter manually'
+            choice.addItem(f"{row['name']} · {row['object_type']} · {distance} · {row['bibcode'] or 'no reference'}",row)
+        layout.addWidget(choice)
+        details=QLabel();details.setWordWrap(True);layout.addWidget(details)
+        def update_details():
+            row=choice.currentData()
+            details.setText(f"Method: {row['method'] or 'unspecified'} · quality: {row['quality'] or 'unspecified'}\nReference: {row['bibcode'] or 'none'}\nDistance errors (pc): −{row['minus_error_pc']} / +{row['plus_error_pc']}")
+        choice.currentIndexChanged.connect(update_details);update_details()
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
+        dialog.resize(680,260)
+        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        row=choice.currentData()
+        if row['distance_pc'] is None:
+            self.clear_target_origin();self.target_origin.setText(row['name']+': no published distance here; enter manually.');return
+        if not self.target_distance_pc.minimum()<=row['distance_pc']<=self.target_distance_pc.maximum():
+            self.show_problem('Distance outside supported range','Enter a target distance within the supported range manually.');return
+        self.target_distance_pc.setValue(row['distance_pc'])
+        self.target_info=dict(row,selected_at=datetime.now().astimezone().isoformat())
+        self.target_origin.setText(f"{row['name']} · SIMBAD · {row['bibcode'] or 'reference unavailable'}")
+        self.zoom_mode.setCurrentIndex(self.zoom_mode.findData('target_distance'))
 
     def set_date_info(self,info):
         self.auto_date_info=info
@@ -612,7 +697,7 @@ class FlythroughWindow(QWidget):
                 self.advanced_toggle.setChecked(True);self.epoch.setFocus()
                 raise ValueError('Enter the observation date in Advanced settings; this image has no DATE-OBS.')
             Time(date)
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),max_stars=self.star_limit.value(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),target_info=self.target_info,max_stars=self.star_limit.value(),mode="iterative",
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=str(Path(self.executable.text()).resolve()),ffmpeg=str(Path(self.ffmpeg.text()).resolve()),
                 epoch=str(date),date_info=info,output=str(out),source=source)
@@ -654,7 +739,7 @@ class FlythroughWindow(QWidget):
                 if not date: raise ValueError('Enter the observation date in Advanced settings before preparing the project.')
                 if not self.selected_date_info(): raise ValueError('Enter a valid capture year or date.')
             selected=self.selected_date_info()
-            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),max_stars=self.star_limit.value(),mode="iterative",
+            options=SimpleNamespace(seconds=self.seconds.value(),zoom=self.zoom_percent(),zoom_mode=self.zoom_mode.currentData(),travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value(),target_info=self.target_info,max_stars=self.star_limit.value(),mode="iterative",
                 output=str(self.prepared),ffmpeg=self.ffmpeg.text(),reuse=True,
                 engine='StarXTerminator' if self.engine.currentIndex()==0 else 'StarNet',
                 executable=self.executable.text(),epoch=selected['value'] if selected else '',date_info=selected)
@@ -682,7 +767,10 @@ class FlythroughWindow(QWidget):
             self.seconds.setValue(state.get('seconds',60))
             self.zoom.setValue(1+state.get('zoom',30)/100)
             self.travel_pc.setValue(state.get('travel_pc',80))
+            self.clear_target_origin()
             self.target_distance_pc.setValue(state.get('target_distance_pc',400))
+            self.target_info=state.get('target_info')
+            if self.target_info:self.target_origin.setText(f"{self.target_info['name']} · SIMBAD · {self.target_info.get('bibcode') or 'reference unavailable'}")
             self.zoom_mode.setCurrentIndex(max(0,self.zoom_mode.findData(state.get('zoom_mode','independent'))))
             self.star_limit.setValue(state.get('max_stars',DEFAULT_MAX_STARS))
             if state.get('ffmpeg'): self.ffmpeg.setText(state['ffmpeg'])
@@ -758,6 +846,8 @@ class FlythroughWindow(QWidget):
             suffix='.html' if name=='preview.html' else '.mp4'
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.result/(self.result_stem+suffix))))
     def closeEvent(self,event):
+        if self.target_worker and self.target_worker.isRunning():
+            self.show_problem('Target lookup running','Wait for the catalogue lookup to finish (30-second network timeout).');event.ignore();return
         if self.worker and self.worker.isRunning():
             self.report_progress('A flight is still processing. Cancel and wait for it to stop before closing.');event.ignore()
         else: event.accept()

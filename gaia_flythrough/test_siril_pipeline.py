@@ -45,7 +45,7 @@ class PipelineTests(unittest.TestCase):
             out=Path(folder)
             scene=dict(stars=[],width=16,height=12,background=png_data(np.zeros((12,16,3))),extraction_version=6,iterative_revision=2)
             (out/'scene_iterative.json').write_text(json.dumps(scene))
-            options=SimpleNamespace(seconds=20,zoom=30,ffmpeg='ffmpeg',zoom_mode='target_distance',target_distance_pc=400,travel_pc=80)
+            options=SimpleNamespace(seconds=20,zoom=30,ffmpeg='ffmpeg',zoom_mode='target_distance',target_distance_pc=400,travel_pc=80,target_info=dict(name='test target',bibcode='reference'))
             with patch('siril_pipeline.render_video') as render,patch('siril_pipeline.prepare') as prepare:
                 render_prepared(out,options)
                 prepare.assert_not_called()
@@ -54,6 +54,8 @@ class PipelineTests(unittest.TestCase):
             meta=json.loads((out/(options.result_stem+'.json')).read_text())
             self.assertEqual(meta['final_zoom'],1.25)
             self.assertEqual(meta['target_distance_pc'],400)
+            self.assertEqual(meta['target_info'],options.target_info)
+            self.assertEqual(read_project(out)['target_info'],options.target_info)
             self.assertIn('target400pc_travel80pc',options.result_stem)
             self.assertEqual(read_project(out)['zoom_mode'],'target_distance')
             self.assertIn('"target_distance"',(out/(options.result_stem+'.html')).read_text())

@@ -1,3 +1,10 @@
+# 0.13.0 — 2026-10-22
+
+- Add explicit background SIMBAD lookup from the solved footprint and a catalogue-target/published-measurement picker in the shared desktop interface.
+- Preserve measurement units converted to pc, available uncertainties, method, quality, reference and selection provenance in saved projects and exports.
+- Keep unknown distances manual; clear catalogue provenance after manual edits. Do not infer distance from redshift or treat catalogue positions as pixel detections.
+- Verify a live M45 lookup; test unit conversion, footprint filtering, overflow handling, selection/override and metadata persistence.
+
 # 0.12.0 — 2026-10-22
 
 - Add optional target-distance perspective in the shared Siril/standalone Flight panel, with target and travel distances in parsecs.
