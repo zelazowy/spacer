@@ -24,12 +24,27 @@ class TargetTests(unittest.TestCase):
     def test_missing_invalid_measurements_stay_unknown(self):
         for value,unit in [(None,'pc'),(-2,'pc'),(float('nan'),'pc'),(2,'unknown')]:
             self.assertIsNone(self.parse([self.row(value,unit)])[0]['distance_pc'])
-    def test_overflow_not_silently_truncated(self):
-        with self.assertRaisesRegex(ValueError,'Too many'):self.parse([self.row()]*(LIMIT+1))
+    def test_many_measurements_do_not_exhaust_object_limit(self):
+        self.assertEqual(len(self.parse([self.row()]*(LIMIT+1))),1)
+
+    def test_object_selection_precedes_paginated_measurements(self):
+        from targets import find_targets
+        from unittest.mock import patch
+        ra,dec=self.wcs.pixel_to_world_values(50,40)
+        obj=dict(oid=10,main_id='M33',otype='G',ra=ra,dec=dec,nbref=10000)
+        data=[dict(oidref=10,mespos=i,dist=i,unit='kpc',bibcode=str(i)) for i in (1,2,3)]
+        with patch('targets.LIMIT',2),patch('targets.tap_rows',side_effect=[[obj],data,data[2:]]) as tap:
+            result=find_targets(self.header)
+        self.assertEqual([r['distance_pc'] for r in result],[1000,2000,3000])
+        self.assertNotIn('JOIN',tap.call_args_list[0].args[0])
+        self.assertIn('mespos>2',tap.call_args_list[2].args[0])
+
     def test_sky_query_uses_solved_field(self):
         query,*_=field_query(self.header)
         self.assertIn("CIRCLE('ICRS',359.",query)
-        self.assertIn('LEFT JOIN mesDistance',query)
+        self.assertIn('FROM basic AS b',query)
+        self.assertIn("path LIKE 'G > %'",query)
+        self.assertNotIn('JOIN',query)
         self.assertIn('ORDER BY nbref DESC',query)
 
 class ApproximateTargetTests(unittest.TestCase):
@@ -41,6 +56,11 @@ class ApproximateTargetTests(unittest.TestCase):
         self.assertEqual(result[0]['distance_pc'],140)
         self.assertEqual(result[0]['distance_range_pc'],[130,136])
         self.assertEqual(result[0]['measurements'],rows)
+    def test_approximate_labels_are_readable(self):
+        from targets import approximate_distance_label
+        self.assertEqual(approximate_distance_label(850000),'about 850 kpc')
+        self.assertEqual(approximate_distance_label(140),'about 140 pc')
+
     def test_unknown_distance_stays_unknown(self):
         from targets import approximate_targets
         self.assertIsNone(approximate_targets([dict(name='nebula',distance_pc=None)])[0]['distance_pc'])

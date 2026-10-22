@@ -143,13 +143,13 @@ class FlythroughWindow(QWidget):
         form.addRow('Zoom mode',self.zoom_mode)
         self.travel_pc=QDoubleSpinBox();self.travel_pc.setRange(0,1e12);self.travel_pc.setDecimals(3);self.travel_pc.setValue(80);self.travel_pc.setSuffix(' pc')
         form.addRow('Travel distance',self.travel_pc)
-        self.target_distance_pc=QDoubleSpinBox();self.target_distance_pc.setRange(.001,1e12);self.target_distance_pc.setDecimals(3);self.target_distance_pc.setValue(400);self.target_distance_pc.setSuffix(' pc')
+        self.target_distance_pc=QDoubleSpinBox();self.target_distance_pc.setRange(0,1e12);self.target_distance_pc.setDecimals(3);self.target_distance_pc.setValue(0);self.target_distance_pc.setSpecialValueText('Choose a target or enter distance');self.target_distance_pc.setSuffix(' pc')
         form.addRow('Target distance',self.target_distance_pc)
         self.find_targets_button=QPushButton('Find targets in this field…')
         self.find_targets_button.setToolTip('Online SIMBAD lookup using the plate solution. Catalogue positions in the frame, not detections in the image.')
         self.find_targets_button.clicked.connect(self.lookup_targets)
         form.addRow(self.find_targets_button)
-        self.target_origin=QLabel('Manual target distance');self.target_origin.setWordWrap(True);form.addRow(self.target_origin)
+        self.target_origin=QLabel('No target distance selected');self.target_origin.setWordWrap(True);form.addRow(self.target_origin)
         self.target_distance_pc.valueChanged.connect(self.clear_target_origin)
         self.target_distance_pc.setToolTip('User-supplied distance to the flat background plane. Must exceed travel distance; no target distance is inferred.')
         self.perspective_note=QLabel();self.perspective_note.setWordWrap(True);form.addRow(self.perspective_note)
@@ -158,7 +158,7 @@ class FlythroughWindow(QWidget):
             self.zoom.setEnabled(not physical);self.target_distance_pc.setEnabled(physical)
             d,s=self.target_distance_pc.value(),self.travel_pc.value()
             self.perspective_note.setVisible(physical)
-            self.perspective_note.setText(f'Derived final enlargement: {d/(d-s):.4g}×. Final zoom above is unused.' if d>s else 'Travel must be less than target distance.')
+            self.perspective_note.setText('Choose a target or enter its approximate distance.' if d==0 else (f'Derived final enlargement: {d/(d-s):.4g}×. Final zoom above is unused.' if d>s else 'Travel must be less than target distance.'))
         self.zoom_mode.currentIndexChanged.connect(update_motion_controls)
         self.travel_pc.valueChanged.connect(update_motion_controls)
         self.target_distance_pc.valueChanged.connect(update_motion_controls);update_motion_controls()
@@ -300,13 +300,18 @@ class FlythroughWindow(QWidget):
         source=FileImageSource(path,wcs_path)
         # Validate the header before changing the selected project.
         if source.has_coordinates: source.header()
-        self.file_source=source;self.prepared=None;self.clear_target_origin();self.target.clear();self.set_date_info(source.date_info())
+        self.file_source=source;self.prepared=None;self.reset_target_distance();self.target.clear();self.set_date_info(source.date_info())
         self.star_limit.setValue(DEFAULT_MAX_STARS)
         self.prepared_star_limit=None;self.prepared_star_count=None
         self.output.setText(str(source.path.parent/'flythrough'/source.path.stem))
         self.refresh_project()
         self.remember_image()
         if Path(self.output.text()).is_dir() and any(Path(self.output.text()).iterdir()): self.use_prepared(Path(self.output.text()))
+
+    def reset_target_distance(self):
+        self.target_distance_pc.setValue(0)
+        self.clear_target_origin()
+        self.target_origin.setText('No target distance selected for this image')
 
     def clear_target_origin(self,*_):
         self.target_info=None
@@ -350,7 +355,7 @@ class FlythroughWindow(QWidget):
         rows=approximate_targets(rows)
         dialog=QDialog(self);dialog.setWindowTitle('Choose a target')
         layout=QVBoxLayout(dialog)
-        note=QLabel('Choose an object for an approximate travel distance. You can adjust it afterwards.')
+        note=QLabel('Main catalogue objects in this field (up to 100). Choose an approximate distance; you can adjust it afterwards.')
         note.setWordWrap(True);layout.addWidget(note)
         choice=QComboBox()
         for row in rows:
@@ -369,7 +374,7 @@ class FlythroughWindow(QWidget):
         if dialog.exec()!=QDialog.DialogCode.Accepted:return
         row=choice.currentData()
         if row['distance_pc'] is None:
-            self.clear_target_origin();self.target_origin.setText(row['name']+': no published distance here; enter manually.');return
+            self.reset_target_distance();self.target_origin.setText(row['name']+': no published distance here; enter manually.');return
         if not self.target_distance_pc.minimum()<=row['distance_pc']<=self.target_distance_pc.maximum():
             self.show_problem('Distance outside supported range','Enter a target distance within the supported range manually.');return
         self.target_distance_pc.setValue(row['distance_pc'])
@@ -577,7 +582,7 @@ class FlythroughWindow(QWidget):
         if folder.exists():
             QMessageBox.information(self,'Choose a new folder','Choose a folder name that does not exist yet. Use Open project to return to an existing project.')
             return
-        self.prepared=None;self.output.setText(str(folder));self.refresh_project();self.detect_siril_date()
+        self.prepared=None;self.reset_target_distance();self.output.setText(str(folder));self.refresh_project();self.detect_siril_date()
         self.star_limit.setValue(DEFAULT_MAX_STARS)
         self.prepared_star_limit=None;self.prepared_star_count=None
         self.advanced_toggle.setChecked(True)
@@ -771,8 +776,16 @@ class FlythroughWindow(QWidget):
             self.zoom.setValue(1+state.get('zoom',30)/100)
             self.travel_pc.setValue(state.get('travel_pc',80))
             self.clear_target_origin()
-            self.target_distance_pc.setValue(state.get('target_distance_pc',400))
+            self.target_distance_pc.setValue(state.get('target_distance_pc',0))
             self.target_info=state.get('target_info')
+            # Discard catalogue selections inherited from a different field.
+            if self.target_info and all(key in self.target_info for key in ('ra_deg','dec_deg')) and (folder/'source_wcs.fits').is_file():
+                from astropy.io import fits
+                from targets import in_field
+                from astropy.wcs import WCS
+                target_header=fits.getheader(folder/'source_wcs.fits')
+                if not in_field(WCS(target_header,naxis=2).celestial,target_header['NAXIS1'],target_header['NAXIS2'],self.target_info['ra_deg'],self.target_info['dec_deg']):
+                    self.reset_target_distance()
             if self.target_info:self.target_origin.setText(f"{self.target_info['name']} · SIMBAD distance" + (" (approximate)" if self.target_info.get("approximate") else ""))
             self.zoom_mode.setCurrentIndex(max(0,self.zoom_mode.findData(state.get('zoom_mode','independent'))))
             self.star_limit.setValue(state.get('max_stars',DEFAULT_MAX_STARS))
@@ -850,7 +863,7 @@ class FlythroughWindow(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.result/(self.result_stem+suffix))))
     def closeEvent(self,event):
         if self.target_worker and self.target_worker.isRunning():
-            self.show_problem('Target lookup running','Wait for the catalogue lookup to finish (30-second network timeout).');event.ignore();return
+            self.show_problem('Target lookup running','Wait for the catalogue lookup to finish (each network request has a 30-second timeout).');event.ignore();return
         if self.worker and self.worker.isRunning():
             self.report_progress('A flight is still processing. Cancel and wait for it to stop before closing.');event.ignore()
         else: event.accept()

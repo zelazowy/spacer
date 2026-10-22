@@ -1,3 +1,11 @@
+# 0.14.1 — 2026-10-22
+
+- Clear target distance when switching images or starting a fresh Siril project; show an unset-distance prompt rather than retaining another object's distance or supplying an arbitrary default.
+- Discard saved catalogue selections whose coordinates lie outside the saved project's footprint.
+- Include galaxy and cluster subclasses through SIMBAD’s type hierarchy (M33 is classified as GiG).
+- Select up to 100 main SIMBAD objects before fetching distances, then paginate measurement rows separately. Dense fields no longer fail because the object/measurement join exceeds 2000 rows.
+- Preserve explicit manual entry, saved project distances and all fetched measurement provenance.
+
 # 0.14.0 — 2026-10-22
 
 - Retry up to four low-residual, non-converging bright-star groups with a bounded 20-iteration stabilised pass.

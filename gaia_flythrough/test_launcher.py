@@ -477,6 +477,32 @@ class LauncherTests(unittest.TestCase):
         self.assertIsNone(w.target_info)
         self.assertEqual(w.target_origin.text(),'Manual target distance')
 
+    def test_new_image_clears_previous_target_distance(self):
+        from PIL import Image
+        image=self.folder/'M33.jpg';Image.new('RGB',(16,12)).save(image)
+        w=self.window
+        w.target_distance_pc.setValue(140)
+        w.target_info=dict(name='M45',distance_pc=140)
+        w.use_image(image)
+        self.assertEqual(w.target_distance_pc.value(),0)
+        self.assertIsNone(w.target_info)
+        self.assertIn('No target distance',w.target_origin.text())
+
+    def test_other_field_catalogue_target_not_restored(self):
+        from astropy.io import fits
+        from astropy.wcs import WCS
+        import numpy as np
+        saved=self.folder/'m33';saved.mkdir()
+        wcs=WCS(naxis=2);wcs.wcs.ctype=['RA---TAN','DEC--TAN']
+        wcs.wcs.crval=[23.4,30.6];wcs.wcs.crpix=[8,6];wcs.wcs.cdelt=[-.01,.01]
+        fits.PrimaryHDU(np.zeros((12,16)),wcs.to_header()).writeto(saved/'source_wcs.fits')
+        (saved/'project.json').write_text(json.dumps(dict(stage='ready',target_distance_pc=140,
+            target_info=dict(name='M45',ra_deg=56.6,dec_deg=24.1))))
+        (saved/'scene_iterative.json').write_text('{}')
+        self.window.use_prepared(saved)
+        self.assertEqual(self.window.target_distance_pc.value(),0)
+        self.assertIsNone(self.window.target_info)
+
     def test_cancel_restores_previous_export_links(self):
         saved=self.folder/'with-export';saved.mkdir()
         (saved/'project.json').write_text(json.dumps(dict(stage='ready',last_render='previous')))

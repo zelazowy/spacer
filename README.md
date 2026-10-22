@@ -187,7 +187,7 @@ Use **Find targets in this field…** in Flight after opening a solved image or 
 
 Choose an individual published distance measurement. The picker shows its method, errors when provided, quality flag and bibliography code. Several measurements can disagree; SPACER neither chooses a preferred paper nor converts redshift to distance. Entries without a usable distance support manual entry. Selected measurements switch to target-distance perspective. Editing the distance clears catalogue provenance. Project/preview/JSON retain the selection and reference; reopening a saved project needs no query to restore the chosen distance.
 
-Lookup is limited to 6° radius and rejects overflow rather than silently returning a partial result. Objects whose centres lie outside the frame and unsupported object types are excluded. Travel must still be smaller than the selected distance.
+Lookup is limited to 6° radius and lists up to 100 main objects ranked by catalogue reference count. Published measurements for those objects are fetched separately with pagination. Objects whose centres lie outside the frame and unsupported object types are excluded. Travel must still be smaller than the selected distance.
 
 ### Simplified picker (0.13.1)
 
@@ -198,3 +198,9 @@ Each object now appears once with an approximate distance. The practical default
 A bounded second pass now handles some bright-star groups whose original fit oscillates rather than converges. Once a neighbouring core has a valid compact shape, the retry keeps that shape and adjusts brightness smoothly; spike direction is held steady. At most four groups receive an additional pass of up to 20 iterations. The original distance, ambiguity, residual and convergence criteria remain in force. A retry with a spike direction inconsistent with a strong accepted field consensus is deferred.
 
 For an existing project, use **Advanced settings → Recalculate stars**, then render a new flight. This reuses saved image layers and catalogue data; previous calculation revisions and exports remain available. Rendering an old cached field alone does not apply the new separation. Crowded/overlapping bright groups, missing distances and unresolved companions can still remain stationary.
+
+### Image switching and dense fields (0.14.1)
+
+Opening another image clears its target distance instead of carrying over the previous image's value. Choose **Find targets in this field…** or enter the new distance manually; SPACER does not silently guess one on image load. Saved projects restore their own settings, except catalogue targets demonstrably outside the saved footprint.
+
+Dense fields such as M33 use a bounded list of main catalogue objects, with their distance measurements fetched separately. No smaller crop is needed merely because a field contains many catalogue entries.

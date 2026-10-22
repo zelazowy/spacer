@@ -6,7 +6,7 @@ Extraction schema/revision numbers remain separate cache compatibility markers.
 """
 from datetime import datetime, timezone
 
-VERSION = '0.14.0'
+VERSION = '0.14.1'
 
 
 def created_stamp():

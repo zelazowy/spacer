@@ -8,6 +8,8 @@ from astropy.wcs import WCS
 
 ENDPOINT='https://simbad.cds.unistra.fr/simbad/sim-tap/sync'
 LIMIT=2000
+MAX_OBJECTS=100
+MAX_DISTANCE_PAGES=10
 
 def field_query(header):
     wcs=WCS(header,naxis=2).celestial
@@ -20,18 +22,22 @@ def field_query(header):
     radius=float(center.separation(wcs.pixel_to_world(x,y)).deg.max())*1.01
     if not math.isfinite(radius) or not 0<radius<=6:
         raise ValueError('Target lookup needs a valid solved field within 6° radius.')
-    query=f"""SELECT TOP {LIMIT+1} b.main_id,b.otype,b.ra,b.dec,b.nbref,d.dist,d.unit,d.minus_err,d.plus_err,d.method,d.bibcode,d.qual
-FROM basic AS b LEFT JOIN mesDistance AS d ON b.oid=d.oidref
+    query=f"""SELECT TOP {MAX_OBJECTS} b.oid,b.main_id,b.otype,b.ra,b.dec,b.nbref
+FROM basic AS b
 WHERE 1=CONTAINS(POINT('ICRS',b.ra,b.dec),CIRCLE('ICRS',{center.ra.deg:.10f},{center.dec.deg:.10f},{radius:.10f}))
-AND b.otype IN ('G','Cl*','OpC','GlC','Neb','RNe','HII','SNR','PN','GNe','DNe','As*','GCl','GrG')
-ORDER BY nbref DESC"""
+AND (b.otype IN ('G','Cl*','OpC','GlC','Neb','RNe','HII','SNR','PN','GNe','DNe','As*','GCl','GrG')
+OR b.otype IN (SELECT otype FROM otypedef WHERE path LIKE 'G > %' OR path LIKE 'Cl* > %'))
+ORDER BY nbref DESC, oid"""
     return query,wcs,width,height
+
+def in_field(wcs,width,height,ra,dec):
+    x,y=wcs.world_to_pixel_values(float(ra),float(dec))
+    return bool(np.isfinite([x,y]).all() and 0<=x<width and 0<=y<height)
+
 
 def parse_targets(payload,wcs,width,height):
     names=[m['name'].lower() for m in payload['metadata']]
     rows=payload['data']
-    if len(rows)>LIMIT:
-        raise ValueError('Too many target measurements. Use a smaller field for a complete list.')
     result=[];seen=set()
     def error(value,factor):
         if value is None or not factor:return None
@@ -55,11 +61,42 @@ def parse_targets(payload,wcs,width,height):
         if key not in seen: result.append(entry);seen.add(key)
     return result
 
-def find_targets(header):
-    query,wcs,width,height=field_query(header)
-    data=urllib.parse.urlencode(dict(REQUEST='doQuery',LANG='ADQL',FORMAT='json',QUERY=query,MAXREC=LIMIT+1)).encode()
+def tap_rows(query,maxrec):
+    data=urllib.parse.urlencode(dict(REQUEST='doQuery',LANG='ADQL',FORMAT='json',QUERY=query,MAXREC=maxrec)).encode()
     with urllib.request.urlopen(urllib.request.Request(ENDPOINT,data=data),timeout=30) as response:
         payload=json.load(response)
+    names=[column['name'].lower() for column in payload['metadata']]
+    return [dict(zip(names,row)) for row in payload['data']]
+
+
+def find_targets(header):
+    query,wcs,width,height=field_query(header)
+    objects=tap_rows(query,MAX_OBJECTS)
+    # Restrict objects before fetching their (potentially numerous) papers.
+    objects=[row for row in objects if in_field(wcs,width,height,row['ra'],row['dec'])]
+    if not objects:return []
+    ids=','.join(str(int(row['oid'])) for row in objects)
+    measurements={int(row['oid']):[] for row in objects}
+    cursor=None
+    for _ in range(MAX_DISTANCE_PAGES):
+        after='' if cursor is None else f' AND (oidref>{cursor[0]} OR (oidref={cursor[0]} AND mespos>{cursor[1]}))'
+        query=f"""SELECT TOP {LIMIT+1} oidref,mespos,dist,unit,minus_err,plus_err,method,bibcode,qual
+FROM mesDistance WHERE oidref IN ({ids}){after} ORDER BY oidref, mespos"""
+        page=tap_rows(query,LIMIT+1)
+        for row in page[:LIMIT]:measurements[int(row['oidref'])].append(row)
+        if len(page)<=LIMIT:break
+        next_cursor=(int(page[LIMIT-1]['oidref']),int(page[LIMIT-1]['mespos']))
+        if cursor is not None and next_cursor<=cursor:
+            raise ValueError('Distance lookup did not advance. Please retry.')
+        cursor=next_cursor
+    else:
+        raise ValueError('Distance lookup exceeded its request budget. Please retry later or enter a distance manually.')
+    combined=[]
+    for obj in objects:
+        for measurement in measurements[int(obj['oid'])] or [{}]:
+            combined.append(dict(obj,**{key:value for key,value in measurement.items() if key not in obj}))
+    names=['main_id','otype','ra','dec','dist','unit','minus_err','plus_err','method','bibcode','qual']
+    payload=dict(metadata=[dict(name=n) for n in names],data=[[r.get(n) for n in names] for r in combined])
     return parse_targets(payload,wcs,width,height)
 
 def approximate_targets(measurements):
@@ -81,4 +118,4 @@ def approximate_targets(measurements):
 def approximate_distance_label(distance):
     if distance is None:return 'distance unavailable — enter manually'
     factor,unit=(1e6,'Mpc') if distance>=1e6 else ((1e3,'kpc') if distance>=1e3 else (1,'pc'))
-    return f'about {distance/factor:.2g} {unit}'
+    return f'about {float(format(distance/factor, ".2g")):g} {unit}'

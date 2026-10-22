@@ -152,3 +152,11 @@ The picker groups individual measurements by object and uses their median rounde
 ## 0.14.0 bounded bright-star retries
 
 Retry only non-converged groups with MAE <= .015, at most four per field and 20 iterations each. Stabilised mode retains the first admitted compact template per neighbour; refit per-channel amplitudes with a robust local plane, damp core and main updates, and hold spike orientation. Keep the .001 convergence threshold, catalogue reliability rules, group count and neighbour limits. Reject retry orientations >5° from a strong (>=3 stars, circular-vector concentration >=.98) field consensus, modulo 90°. Existing cache compatibility remains >=revision2; new calculation output records revision3. Apply through explicit Recalculate stars rather than silently invalidating existing analysis.
+
+## 0.14.1 target reset and object-query bounds
+
+Never carry a selected/manual distance into a different newly opened image. Zero is the UI's unset state (special text); target-distance rendering rejects it. Existing project settings restore normally, but catalogue selections with stored coordinates outside the saved WCS are cleared. A new Siril project also resets target distance.
+
+targets.field_query now selects up to MAX_OBJECTS=100 basic rows ordered by reference count, not a joined distance rowset. Filter WCS inclusion before requesting mesDistance for those IDs. Keyset pagination uses (oidref,mespos), LIMIT=2000 and a bounded page budget. Do not truncate an object's measurements before deriving its approximate distance. The picker explicitly describes the shortlist; it does not claim to list every object.
+
+SIMBAD classifies M33 as GiG, not plain G. Include descendants using otypedef.path (for example "G > GiG" and "Cl* > OpC") in the object query. Do not restrict galaxy lookup to b.otype='G'.
