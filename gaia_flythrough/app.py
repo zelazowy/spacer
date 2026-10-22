@@ -350,12 +350,12 @@ class FlythroughWindow(QWidget):
                 self.show_problem('Field changed','The image changed during lookup. Find targets again.');return
         except Exception:return
         if not rows:
-            self.show_problem('No catalogue targets','No supported nebula, cluster or galaxy centres were found in this frame. You can enter a distance manually.');return
+            self.show_problem('No catalogue targets','No familiar deep-sky catalogue targets were found in this frame. You can enter a distance manually.');return
         from targets import approximate_targets, approximate_distance_label
         rows=approximate_targets(rows)
         dialog=QDialog(self);dialog.setWindowTitle('Choose a target')
         layout=QVBoxLayout(dialog)
-        note=QLabel('Main catalogue objects in this field (up to 100). Choose an approximate distance; you can adjust it afterwards.')
+        note=QLabel('Main targets: Messier, IC, NGC, then other familiar catalogues. Choose an approximate distance; you can adjust it afterwards.')
         note.setWordWrap(True);layout.addWidget(note)
         choice=QComboBox()
         for row in rows:

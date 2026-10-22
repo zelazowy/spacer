@@ -160,3 +160,7 @@ Never carry a selected/manual distance into a different newly opened image. Zero
 targets.field_query now selects up to MAX_OBJECTS=100 basic rows ordered by reference count, not a joined distance rowset. Filter WCS inclusion before requesting mesDistance for those IDs. Keyset pagination uses (oidref,mespos), LIMIT=2000 and a bounded page budget. Do not truncate an object's measurements before deriving its approximate distance. The picker explicitly describes the shortlist; it does not claim to list every object.
 
 SIMBAD classifies M33 as GiG, not plain G. Include descendants using otypedef.path (for example "G > GiG" and "Cl* > OpC") in the object query. Do not restrict galaxy lookup to b.otype='G'.
+
+## 0.14.2 familiar target ordering
+
+Filter candidate basic rows by familiar ident aliases before applying the bounded object list; fetch matching aliases for selected IDs separately. Prefer and naturally sort M, IC, NGC, then the curated common catalogues in targets.CATALOGUES. Do not use SIMBAD primary names alone: M45's primary is Cl Melotte 22. Preserve simbad_name/aliases on measurement summaries. Survey-only identifiers are intentionally excluded from the default picker.

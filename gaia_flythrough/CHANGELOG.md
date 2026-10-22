@@ -1,3 +1,10 @@
+# 0.14.2 — 2026-10-22
+
+- Restrict target discovery to familiar deep-sky catalogues rather than coordinate-named survey sources.
+- Display and naturally sort objects as Messier → IC → NGC → Sharpless, vdB, Barnard, LDN/LBN, Melotte/Collinder.
+- Resolve preferred display names from SIMBAD aliases, so the Pleiades appears as M45 even when the primary identifier is Cl Melotte 22.
+- Preserve original primary names and matching aliases in target provenance. Distance estimates are unchanged.
+
 # 0.14.1 — 2026-10-22
 
 - Clear target distance when switching images or starting a fresh Siril project; show an unset-distance prompt rather than retaining another object's distance or supplying an arbitrary default.

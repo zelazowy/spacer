@@ -204,3 +204,9 @@ For an existing project, use **Advanced settings → Recalculate stars**, then r
 Opening another image clears its target distance instead of carrying over the previous image's value. Choose **Find targets in this field…** or enter the new distance manually; SPACER does not silently guess one on image load. Saved projects restore their own settings, except catalogue targets demonstrably outside the saved footprint.
 
 Dense fields such as M33 use a bounded list of main catalogue objects, with their distance measurements fetched separately. No smaller crop is needed merely because a field contains many catalogue entries.
+
+### Familiar targets first (0.14.2)
+
+The default target list now shows familiar deep-sky objects, ordered **Messier → IC → NGC**, followed by common nebula/cluster catalogues (Sharpless, vdB, Barnard, LDN/LBN, Melotte and Collinder). Numbers sort naturally within each catalogue. Survey-only entries such as WISE/2MASS coordinate names are excluded. Familiar aliases are preferred—for example, **M45** instead of **Cl Melotte 22**—while original catalogue identifiers remain in saved provenance.
+
+Discovery is still bounded to 100 main candidates. If your target is outside these catalogues or has no published distance, manual distance entry remains available.
