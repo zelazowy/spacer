@@ -1,4 +1,16 @@
-# 0.17.0 — 2026-10-22
+# Changelog
+
+Release history for SPACER. Current setup and usage are in [README.md](README.md); repository working rules are in [AGENTS.md](AGENTS.md).
+
+## 0.17.1 — 2026-10-22
+
+- Reorganize README around requirements, setup and the current workflow; remove duplicate release sections and stale version/behavior descriptions.
+- Make this root file the single release history, with consistent headings and the existing entries retained.
+- Separate agent rules into AGENTS.md and current architecture/contracts into docs/DEVELOPMENT.md.
+- Add focused user, scientific-scope and validation guides; retain the historical interface audit under docs/.
+- Documentation-only patch; processing, extraction, rendering and cache compatibility are unchanged.
+
+## 0.17.0 — 2026-10-22
 
 - Add opt-in approximate distance coverage to both launchers and the prototype CLI: screened Bailer-Jones photogeometric/broader geometric estimates and Hipparcos-2 bright-star fallback.
 - Preserve strict Gaia geometric estimates when available. Retain Gaia RUWE screening and require high-significance, single-component five-parameter Hipparcos solutions.
@@ -8,7 +20,7 @@
 - Raise the bounded neighbour count from 64 to 96 without relaxing fit, overlap or unresolved-companion checks.
 - Real M45 validation: 6,328 → 9,392 movers (+48.4%), including 3,064 approximate estimates. Hipparcos contributed no accepted sprites in this field; accepted bright-group count remains 14. Overlapping bright stars still need better separation.
 
-# 0.16.0 — 2026-10-22
+## 0.16.0 — 2026-10-22
 
 - Port relevant improvements from Siril_ASTAP_PlateSolve.py 0.5.0 into the standalone ASTAP path without importing Siril.
 - Repair undefined/invalid EQUINOX on private solver headers. Remove stale PC terms when ASTAP provides CD, and discard obsolete SIP coefficients from TAN-only results.
@@ -18,7 +30,7 @@
 - Keep original-pixel confirmation, scale/parity/edge checks, shared timeout, original pixels and orientation unchanged. No new interface controls.
 - Real M33 validation: solved and confirmed, centre/corner differences 0.27/2.77 arcsec maximum against its existing WCS; source SHA-256 unchanged.
 
-# 0.15.0 — 2026-10-22
+## 0.15.0 — 2026-10-22
 
 - Simplify the shared main Flight panel to Duration, Motion and the controls for the selected style.
 - Camera zoom shows only Final zoom; Travel toward a target shows a compact target summary and Choose target action.
@@ -26,14 +38,14 @@
 - Remove duplicated status/metadata explanations from the main window; keep source metadata in tooltips, diagnostics in Details and concise perspective feedback.
 - Preserve saved settings, rendering geometry, full processing logs, stable preparation/recalculation sections and screen-bounded windows.
 
-# 0.14.2 — 2026-10-22
+## 0.14.2 — 2026-10-22
 
 - Restrict target discovery to familiar deep-sky catalogues rather than coordinate-named survey sources.
 - Display and naturally sort objects as Messier → IC → NGC → Sharpless, vdB, Barnard, LDN/LBN, Melotte/Collinder.
 - Resolve preferred display names from SIMBAD aliases, so the Pleiades appears as M45 even when the primary identifier is Cl Melotte 22.
 - Preserve original primary names and matching aliases in target provenance. Distance estimates are unchanged.
 
-# 0.14.1 — 2026-10-22
+## 0.14.1 — 2026-10-22
 
 - Clear target distance when switching images or starting a fresh Siril project; show an unset-distance prompt rather than retaining another object's distance or supplying an arbitrary default.
 - Discard saved catalogue selections whose coordinates lie outside the saved project's footprint.
@@ -41,34 +53,32 @@
 - Select up to 100 main SIMBAD objects before fetching distances, then paginate measurement rows separately. Dense fields no longer fail because the object/measurement join exceeds 2000 rows.
 - Preserve explicit manual entry, saved project distances and all fetched measurement provenance.
 
-# 0.14.0 — 2026-10-22
+## 0.14.0 — 2026-10-22
 
 - Retry up to four low-residual, non-converging bright-star groups with a bounded 20-iteration stabilised pass.
 - Hold the measured spike angle and previously admitted compact-neighbour shapes fixed during retries, refitting brightness against robust local planes and damping updates.
 - Keep distance, crowding, convergence and residual thresholds unchanged. Reject retries whose spike direction contradicts a strong field consensus.
 - Record retry diagnostics and limits in the calculation report; use Recalculate stars to apply the new separation to existing projects without another removal/catalogue query. Preserve previous calculations and exports.
 
-# 0.13.1 — 2026-10-22
+## 0.13.1 — 2026-10-22
 
 - Simplify target selection to one entry per object with an approximate distance, without requiring paper selection.
 - Use the median of available published estimates rounded to two significant figures as a practical animation input, not a combined scientific measurement.
 - Retain original estimates, references, range and summary method in saved provenance; unknown distances remain manual.
 
-# 0.13.0 — 2026-10-22
+## 0.13.0 — 2026-10-22
 
 - Add explicit background SIMBAD lookup from the solved footprint and a catalogue-target/published-measurement picker in the shared desktop interface.
 - Preserve measurement units converted to pc, available uncertainties, method, quality, reference and selection provenance in saved projects and exports.
 - Keep unknown distances manual; clear catalogue provenance after manual edits. Do not infer distance from redshift or treat catalogue positions as pixel detections.
 - Verify a live M45 lookup; test unit conversion, footprint filtering, overflow handling, selection/override and metadata persistence.
 
-# 0.12.0 — 2026-10-22
+## 0.12.0 — 2026-10-22
 
 - Add optional target-distance perspective in the shared Siril/standalone Flight panel, with target and travel distances in parsecs.
 - Background magnification follows D/(D-s). Stars retain their own perspective displacement without a second zoom factor; photographed PSF sizes stay fixed in this mode.
 - Keep independent zoom as default. Save motion settings in projects, preview scenes, filenames and export metadata; reuse existing extraction.
 - Reject non-finite/negative travel and target arrival/crossing. Target distance is a user-supplied flat-plane assumption, not an inferred distance.
-
-# Gaia Flythrough releases
 
 ## 0.11.3 — 2026-10-18
 
@@ -272,5 +282,3 @@ First explicit release baseline after the M45 iterative experiments.
 - Tool version appears in the Siril window, preview heading, output filenames, JSON metadata and MP4 comment.
 - Field preparation version and time are recorded separately from render version and time. Older fields are explicitly unversioned.
 - Existing exports remain unchanged; filename collisions receive numbered suffixes.
-
-Use major.minor.patch: major for incompatible workflows, minor for features or deliberate extraction/rendering behaviour changes, patch for corrective fixes. Update the shared VERSION in version.py and add a release entry whenever shipping changes. Internal extraction schemas and iterative cache revisions are separate compatibility markers.

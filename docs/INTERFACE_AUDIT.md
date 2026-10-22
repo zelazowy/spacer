@@ -1,5 +1,7 @@
 # SPACER interface audit — 2026-10-17
 
+This is a historical audit, not the current setup guide or a repository rule file. See [development context](DEVELOPMENT.md), [agent rules](../AGENTS.md) and the [validation record](VALIDATION.md) for current guidance.
+
 Reviewed after adding saved-project recalculation in 0.11.0 and fixing Advanced sizing/path pickers in 0.11.1. Follow-up fixes shipped in 0.11.2; the user-requested layout-stability correction ships in 0.11.3.
 
 ## Scope and checks
