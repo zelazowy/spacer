@@ -37,6 +37,29 @@ class IterativeSeparationTests(unittest.TestCase):
         self.assertLess(history[-1]['mean_absolute_residual'],.01)
 
 
+    def test_retry_spike_direction_requires_consistency_with_strong_field_consensus(self):
+        from iterative_deblend import consistent_spike_angle
+        self.assertTrue(consistent_spike_angle(29.5,[30,29.5,30]))
+        self.assertFalse(consistent_spike_angle(3.5,[30,29.5,30]))
+        self.assertTrue(consistent_spike_angle(89,[0,1,89]))
+        self.assertTrue(consistent_spike_angle(3.5,[30,29.5]))
+        self.assertTrue(consistent_spike_angle(3.5,[0,30,60]))
+
+    def test_stabilised_pass_preserves_light_and_independent_neighbour(self):
+        yy,xx=np.mgrid[:101,:101];dx=xx-50;dy=yy-50
+        main=.55*np.exp(-(dx*dx+dy*dy)/8)
+        main+=.035*np.exp(-dy*dy/2)/(1+(dx/20)**2)
+        main+=.035*np.exp(-dx*dx/2)/(1+(dy/20)**2)
+        neighbour=.2*np.exp(-((xx-63)**2+dy*dy)/(2*1.3**2))
+        data=np.repeat((main+neighbour)[...,None],3,axis=2)
+        layers,background,history=deblend_group(data,(50,50),[(63,50)],fit_compact_sprite,iterations=20,stabilise=True)
+        np.testing.assert_allclose(background+sum(layers),data,atol=1e-6)
+        self.assertGreaterEqual(background.min(),-1e-6)
+        self.assertLess(history[-1]['relative_model_change'],.001)
+        self.assertLess(abs(layers[1][50,63,0]-.2),.045)
+        self.assertLess(layers[1][50,50,0],.001)
+        self.assertEqual(len({h['spike_angle_deg'] for h in history}),1)
+
     def test_group_progress_counts_deferred_and_failed_groups(self):
         import csv,tempfile
         from pathlib import Path
@@ -74,6 +97,16 @@ class IterativeSeparationTests(unittest.TestCase):
                 fit.assert_called_once()
                 self.assertEqual(len(fit.call_args.args[2]),1) # uncertain neighbour still participates
                 self.assertEqual(result['motion_selection']['moving_stars'],len(result['stars']))
+            # Only the isolated group is fitted; a failed low-residual fit
+            # gets one bounded, explicitly stabilised retry.
+            failed=[dict(relative_model_change=.02,mean_absolute_residual=.005)]*2
+            success=[dict(relative_model_change=1,mean_absolute_residual=.005),dict(relative_model_change=.0005,mean_absolute_residual=.005)]
+            zero_layers=[np.zeros((321,321,3),dtype=np.float32)]*2
+            with patch('iterative_deblend.deblend_group',side_effect=[(zero_layers,None,failed),(zero_layers,None,success)]) as fit:
+                recovered,_=refine_prepared_field(dict(stars=[],background=png_data(photo)),folder)
+                self.assertEqual(fit.call_count,2)
+                self.assertTrue(fit.call_args.kwargs['stabilise'])
+                self.assertEqual(recovered['iterative_limits']['stabilised_retries'],1)
             groups=[e for e in events if e[0]=='Refining Iterative groups']
             self.assertEqual(groups[0][1:3],(0,3));self.assertEqual(groups[-1][1:3],(3,3))
             import json

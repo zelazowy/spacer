@@ -192,3 +192,9 @@ Lookup is limited to 6° radius and rejects overflow rather than silently return
 ### Simplified picker (0.13.1)
 
 Each object now appears once with an approximate distance. The practical default is the median of available published estimates rounded to two significant figures; it is an animation input, not a new scientific measurement. Original measurements/references and their range stay in saved metadata. No paper selection is required; manual adjustment remains available.
+
+## Bright-star retries (0.14.0)
+
+A bounded second pass now handles some bright-star groups whose original fit oscillates rather than converges. Once a neighbouring core has a valid compact shape, the retry keeps that shape and adjusts brightness smoothly; spike direction is held steady. At most four groups receive an additional pass of up to 20 iterations. The original distance, ambiguity, residual and convergence criteria remain in force. A retry with a spike direction inconsistent with a strong accepted field consensus is deferred.
+
+For an existing project, use **Advanced settings → Recalculate stars**, then render a new flight. This reuses saved image layers and catalogue data; previous calculation revisions and exports remain available. Rendering an old cached field alone does not apply the new separation. Crowded/overlapping bright groups, missing distances and unresolved companions can still remain stationary.

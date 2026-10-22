@@ -1,3 +1,10 @@
+# 0.14.0 — 2026-10-22
+
+- Retry up to four low-residual, non-converging bright-star groups with a bounded 20-iteration stabilised pass.
+- Hold the measured spike angle and previously admitted compact-neighbour shapes fixed during retries, refitting brightness against robust local planes and damping updates.
+- Keep distance, crowding, convergence and residual thresholds unchanged. Reject retries whose spike direction contradicts a strong field consensus.
+- Record retry diagnostics and limits in the calculation report; use Recalculate stars to apply the new separation to existing projects without another removal/catalogue query. Preserve previous calculations and exports.
+
 # 0.13.1 — 2026-10-22
 
 - Simplify target selection to one entry per object with an approximate distance, without requiring paper selection.

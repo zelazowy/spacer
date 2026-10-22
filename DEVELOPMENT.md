@@ -148,3 +148,7 @@ targets.py queries SIMBAD basic + mesDistance (verified TAP schema). Query a pad
 ## 0.13.1 approximate targets
 
 The picker groups individual measurements by object and uses their median rounded to two significant figures. This is a practical animation distance, not a scientifically combined estimate. Keep every original measurement/reference under target_info.measurements and preserve the observed range; do not attach one paper's uncertainties or reference to the summary distance. No distance is invented for objects lacking measurements.
+
+## 0.14.0 bounded bright-star retries
+
+Retry only non-converged groups with MAE <= .015, at most four per field and 20 iterations each. Stabilised mode retains the first admitted compact template per neighbour; refit per-channel amplitudes with a robust local plane, damp core and main updates, and hold spike orientation. Keep the .001 convergence threshold, catalogue reliability rules, group count and neighbour limits. Reject retry orientations >5° from a strong (>=3 stars, circular-vector concentration >=.98) field consensus, modulo 90°. Existing cache compatibility remains >=revision2; new calculation output records revision3. Apply through explicit Recalculate stars rather than silently invalidating existing analysis.

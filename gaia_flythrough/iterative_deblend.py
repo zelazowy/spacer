@@ -60,7 +60,7 @@ def measured_spikes(data,halo,center,angle,excluded,max_radius):
     return result
 
 
-def bright_psf(data,center,exclude):
+def bright_psf(data,center,exclude,fixed_angle=None):
     h,w=data.shape[:2]
     yy,xx=np.mgrid[:h,:w];dx=xx-center[0];dy=yy-center[1]
     radius=np.hypot(dx,dy);bins=radius.astype(int)
@@ -88,7 +88,7 @@ def bright_psf(data,center,exclude):
             a=angle+j*np.pi/2
             rays.append(ndimage.map_coordinates(light,[center[1]+rs*np.sin(a),center[0]+rs*np.cos(a)],order=1))
         scores.append(np.median(rays,axis=0).mean())
-    angle=angles[int(np.argmax(scores))]
+    angle=angles[int(np.argmax(scores))] if fixed_angle is None else np.radians(fixed_angle)
     basis=[]
     for a in (angle,angle+np.pi/2):
         along=dx*np.cos(a)+dy*np.sin(a)
@@ -116,7 +116,38 @@ def bright_psf(data,center,exclude):
     return np.maximum(halo+spikes,0)*taper[...,None],float(np.degrees(angle))
 
 
-def deblend_group(data,primary,neighbours,fit_core,iterations=8,cancel=None):
+def consistent_spike_angle(angle,accepted_angles):
+    """Use strong field consensus only; angles repeat every 90 degrees."""
+    if angle is None or len(accepted_angles)<3:return True
+    vectors=np.exp(4j*np.radians(accepted_angles))
+    mean=vectors.mean()
+    if abs(mean)<.98:return True
+    reference=np.degrees(np.angle(mean))/4
+    difference=abs((angle-reference+45)%90-45)
+    return difference<=5
+
+
+def refit_fixed_core(data,model):
+    """Refit a previously admitted compact shape with a robust local plane."""
+    sy,sx,patch,_=model
+    h,w=patch.shape[:2];yy,xx=np.mgrid[:h,:w]
+    result=np.zeros_like(patch)
+    for c in range(3):
+        template=patch[:,:,c]
+        peak=float(template.max())
+        if peak<=0:continue
+        template=template/peak
+        design=np.column_stack([template.ravel(),np.ones(h*w),xx.ravel()-w/2,yy.ravel()-h/2])
+        target=data[sy,sx,c].ravel();weights=np.ones(h*w)
+        for _ in range(3):
+            coef=np.linalg.lstsq(design*weights[:,None],target*weights,rcond=None)[0]
+            error=design@coef-target
+            weights=np.sqrt(1/np.maximum(1,np.abs(error)/.01))
+        result[:,:,c]=max(0,coef[0])*template
+    return sy,sx,result,model[3]
+
+
+def deblend_group(data,primary,neighbours,fit_core,iterations=8,cancel=None,stabilise=False):
     """Return per-source positive models, reconstruction and iteration metrics.
 
 Neighbour positions are (x,y) in tile coordinates. Unmatched or uncertain
@@ -128,18 +159,28 @@ neighbours must also be supplied; their fitted light stays stationary later.
         excluded|=(xx-x)**2+(yy-y)**2<25
     tree=cKDTree([primary,*neighbours])
     cores=[np.zeros_like(data) for _ in neighbours]
-    history=[];previous=None
+    history=[];previous=None;fixed_angle=None;previous_main=None
+    fixed_cores=[None for _ in neighbours]
     for iteration in range(iterations):
         if cancel is not None and cancel.is_set(): raise InterruptedError('Iterative separation cancelled.')
         core_sum=sum(cores,np.zeros_like(data))
-        main,angle=bright_psf(np.maximum(data-core_sum,0),primary,excluded)
+        main,angle=bright_psf(np.maximum(data-core_sum,0),primary,excluded,fixed_angle=fixed_angle)
+        if stabilise:
+            if fixed_angle is None:fixed_angle=angle
+            if previous_main is not None:main=.5*main+.5*previous_main
+            previous_main=main.copy()
         for index,(x,y) in enumerate(neighbours):
             if cancel is not None and cancel.is_set(): raise InterruptedError('Iterative separation cancelled.')
             remainder=np.maximum(data-main-(core_sum-cores[index]),0)
-            fitted=fit_core(remainder,x,y,tree)
+            if stabilise and fixed_cores[index] is not None:
+                fitted=refit_fixed_core(remainder,fixed_cores[index])
+            else:
+                fitted=fit_core(remainder,x,y,tree)
+                if stabilise and fitted is not None:fixed_cores[index]=fitted
             new=np.zeros_like(data)
             if fitted is not None:
                 sy,sx,patch,_=fitted;new[sy,sx]=patch
+            if stabilise:new=.5*new+.5*cores[index]
             core_sum+=new-cores[index];cores[index]=new
         total=main+core_sum
         change=1. if previous is None else float(np.abs(total-previous).sum()/max(previous.sum(),1e-9))
@@ -201,7 +242,7 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
     optical_center=wcs.pixel_to_world((w-1)/2,(h-1)/2)
     valid=np.flatnonzero(np.isfinite(gx)&np.isfinite(gy))
     neighbour_tree=cKDTree(np.column_stack([gx[valid],gy[valid]]))
-    fits_started=0
+    fits_started=0;retries_started=0;accepted_angles=[]
     progress(f'Iterative limits: {MAX_ITERATIVE_GROUPS} fitted groups, {MAX_GROUP_NEIGHBOURS} neighbours per group; crowded halos stay in the photograph.')
     groups=StageProgress('Refining Iterative groups',len(candidates),stage_progress,progress,cancel)
     for step,primary_index in enumerate(groups.track(candidates)):
@@ -234,8 +275,22 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
         layers,_,history=deblend_group(residual[sy,sx].astype(np.float32),(x-left,y-top),
             positions,fit_compact_sprite,iterations=20,cancel=cancel)
         converged=len(history)>1 and history[-1]['relative_model_change']<.001
+        first_history=history;retried=False
+        # Retry low-residual oscillating fits only; no looser distance,
+        # ambiguity or image-residual thresholds. Bound extra work per field.
+        if (not converged and len(history)>1 and history[-1]['mean_absolute_residual']<=.015
+                and retries_started<4):
+            retries_started+=1;retried=True
+            progress(Diagnostic(f'Stabilising bright-star fit: Gaia {source_id} (retry {retries_started}/4)'))
+            layers,_,history=deblend_group(residual[sy,sx].astype(np.float32),(x-left,y-top),
+                positions,fit_compact_sprite,iterations=20,cancel=cancel,stabilise=True)
+            converged=len(history)>1 and history[-1]['relative_model_change']<.001
         if not converged or history[-1]['mean_absolute_residual']>.015:
-            report.append(dict(source_id=source_id,status='deferred_fit_not_converged',history=history));continue
+            report.append(dict(source_id=source_id,status='deferred_fit_not_converged',history=history,retried=retried,first_history=first_history if retried else None));continue
+        angle=history[-1].get('spike_angle_deg')
+        if retried and not consistent_spike_angle(angle,accepted_angles):
+            report.append(dict(source_id=source_id,status='deferred_inconsistent_spike_angle',
+                history=history,retried=True,first_history=first_history));continue
         ids={rows[i]['source_id'] for i in [primary_index,*indices]}
         retained=[]
         for star in stars:
@@ -257,11 +312,12 @@ def refine_prepared_field(scene,folder,progress=lambda message:None,cancel=None,
                 distance_pc=d,lower_pc=lo,upper_pc=hi,iterative_group=source_id))
             recovered.append(rows[index]['source_id'])
         stars=retained;accepted_centers.append((x,y))
-        report.append(dict(source_id=source_id,status='accepted',history=history,
+        if angle is not None:accepted_angles.append(angle)
+        report.append(dict(source_id=source_id,status='accepted',history=history,retried=retried,first_history=first_history if retried else None,
             analysed_catalogue_sources=len(indices)+1,recovered_sources=recovered))
     StageProgress('Saving Iterative field',-1,stage_progress,progress,cancel)
-    result=dict(scene,stars=stars,background=png_data(background),extraction_version=6,iterative_revision=2,prepared_with_version=VERSION,prepared_at=created_stamp(),mode='iterative',
-        iterative_limits=dict(max_fitted_groups=MAX_ITERATIVE_GROUPS,max_neighbours=MAX_GROUP_NEIGHBOURS,fitted_groups=fits_started),
+    result=dict(scene,stars=stars,background=png_data(background),extraction_version=6,iterative_revision=3,prepared_with_version=VERSION,prepared_at=created_stamp(),mode='iterative',
+        iterative_limits=dict(max_fitted_groups=MAX_ITERATIVE_GROUPS,max_neighbours=MAX_GROUP_NEIGHBOURS,fitted_groups=fits_started,stabilised_retries=retries_started,max_stabilised_retries=4),
         label='Experimental iterative halo/spike separation; uncertain bright groups remain stationary')
     if 'motion_selection' in scene:
         result['motion_selection']=dict(scene['motion_selection'],moving_stars=len(stars))
