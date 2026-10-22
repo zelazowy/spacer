@@ -1,3 +1,9 @@
+# 0.13.1 — 2026-10-22
+
+- Simplify target selection to one entry per object with an approximate distance, without requiring paper selection.
+- Use the median of available published estimates rounded to two significant figures as a practical animation input, not a combined scientific measurement.
+- Retain original estimates, references, range and summary method in saved provenance; unknown distances remain manual.
+
 # 0.13.0 — 2026-10-22
 
 - Add explicit background SIMBAD lookup from the solved footprint and a catalogue-target/published-measurement picker in the shared desktop interface.

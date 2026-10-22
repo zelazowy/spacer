@@ -61,3 +61,24 @@ def find_targets(header):
     with urllib.request.urlopen(urllib.request.Request(ENDPOINT,data=data),timeout=30) as response:
         payload=json.load(response)
     return parse_targets(payload,wcs,width,height)
+
+def approximate_targets(measurements):
+    """One practical distance per object, not a combined scientific estimate."""
+    from statistics import median
+    groups={}
+    for row in measurements:groups.setdefault(row['name'],[]).append(row)
+    result=[]
+    for name,rows in groups.items():
+        distances=[r['distance_pc'] for r in rows if r.get('distance_pc') is not None]
+        value=float(format(median(distances),'.2g')) if distances else None
+        result.append(dict(rows[0],distance_pc=value,approximate=True,bibcode=None,method='approximate catalogue summary',quality=None,minus_error_pc=None,plus_error_pc=None,
+            distance_summary='Median of available published estimates, rounded to two significant figures',
+            measurement_count=len(distances),measurements=rows,
+            distance_range_pc=[min(distances),max(distances)] if distances else None))
+    return result
+
+
+def approximate_distance_label(distance):
+    if distance is None:return 'distance unavailable — enter manually'
+    factor,unit=(1e6,'Mpc') if distance>=1e6 else ((1e3,'kpc') if distance>=1e3 else (1,'pc'))
+    return f'about {distance/factor:.2g} {unit}'

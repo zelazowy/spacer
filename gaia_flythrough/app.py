@@ -346,19 +346,22 @@ class FlythroughWindow(QWidget):
         except Exception:return
         if not rows:
             self.show_problem('No catalogue targets','No supported nebula, cluster or galaxy centres were found in this frame. You can enter a distance manually.');return
-        dialog=QDialog(self);dialog.setWindowTitle('Catalogue targets in the solved field')
+        from targets import approximate_targets, approximate_distance_label
+        rows=approximate_targets(rows)
+        dialog=QDialog(self);dialog.setWindowTitle('Choose a target')
         layout=QVBoxLayout(dialog)
-        note=QLabel('SIMBAD catalogue positions, not image detections. Choose a published measurement; measurements may disagree. No distance is inferred from redshift.')
+        note=QLabel('Choose an object for an approximate travel distance. You can adjust it afterwards.')
         note.setWordWrap(True);layout.addWidget(note)
         choice=QComboBox()
         for row in rows:
-            distance=f"{row['distance_pc']:g} pc" if row['distance_pc'] else 'distance unavailable — enter manually'
-            choice.addItem(f"{row['name']} · {row['object_type']} · {distance} · {row['bibcode'] or 'no reference'}",row)
+            distance=approximate_distance_label(row['distance_pc'])
+            choice.addItem(f"{row['name']} · {distance}",row)
         layout.addWidget(choice)
         details=QLabel();details.setWordWrap(True);layout.addWidget(details)
         def update_details():
             row=choice.currentData()
-            details.setText(f"Method: {row['method'] or 'unspecified'} · quality: {row['quality'] or 'unspecified'}\nReference: {row['bibcode'] or 'none'}\nDistance errors (pc): −{row['minus_error_pc']} / +{row['plus_error_pc']}")
+            details.setText('Approximate catalogue distance; references are saved with the project.' if row['distance_pc'] else 'No distance available. You can enter one manually.')
+            details.setToolTip(row['distance_summary'])
         choice.currentIndexChanged.connect(update_details);update_details()
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
@@ -371,7 +374,7 @@ class FlythroughWindow(QWidget):
             self.show_problem('Distance outside supported range','Enter a target distance within the supported range manually.');return
         self.target_distance_pc.setValue(row['distance_pc'])
         self.target_info=dict(row,selected_at=datetime.now().astimezone().isoformat())
-        self.target_origin.setText(f"{row['name']} · SIMBAD · {row['bibcode'] or 'reference unavailable'}")
+        self.target_origin.setText(f"{row['name']} · approximate SIMBAD distance")
         self.zoom_mode.setCurrentIndex(self.zoom_mode.findData('target_distance'))
 
     def set_date_info(self,info):
@@ -770,7 +773,7 @@ class FlythroughWindow(QWidget):
             self.clear_target_origin()
             self.target_distance_pc.setValue(state.get('target_distance_pc',400))
             self.target_info=state.get('target_info')
-            if self.target_info:self.target_origin.setText(f"{self.target_info['name']} · SIMBAD · {self.target_info.get('bibcode') or 'reference unavailable'}")
+            if self.target_info:self.target_origin.setText(f"{self.target_info['name']} · SIMBAD distance" + (" (approximate)" if self.target_info.get("approximate") else ""))
             self.zoom_mode.setCurrentIndex(max(0,self.zoom_mode.findData(state.get('zoom_mode','independent'))))
             self.star_limit.setValue(state.get('max_stars',DEFAULT_MAX_STARS))
             if state.get('ffmpeg'): self.ffmpeg.setText(state['ffmpeg'])

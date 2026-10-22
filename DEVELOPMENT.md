@@ -144,3 +144,7 @@ motion.py validates camera settings and computes background and stellar zoom ind
 ## 0.13.0 catalogue target selection
 
 targets.py queries SIMBAD basic + mesDistance (verified TAP schema). Query a padded circumscribed cone, filter actual WCS pixel inclusion, preserve individual measurements rather than averaging them. Supported extended-object classes only; no centre-outside-frame objects. TOP/MAXREC overflow is rejected. TargetWorker keeps network work off the GUI thread; stale field responses are discarded and close waits for bounded lookup. target_info is render/project provenance, not Gaia stellar-depth data. Selection uses the existing optical-axis camera geometry; it does not re-centre the camera on the selected object.
+
+## 0.13.1 approximate targets
+
+The picker groups individual measurements by object and uses their median rounded to two significant figures. This is a practical animation distance, not a scientifically combined estimate. Keep every original measurement/reference under target_info.measurements and preserve the observed range; do not attach one paper's uncertainties or reference to the summary distance. No distance is invented for objects lacking measurements.

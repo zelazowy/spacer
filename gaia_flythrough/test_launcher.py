@@ -468,11 +468,12 @@ class LauncherTests(unittest.TestCase):
         with patch.object(w,'target_header',return_value=None),patch('targets.field_query',return_value=('field',None,None,None)),patch.object(QDialog,'exec',return_value=QDialog.DialogCode.Accepted):
             w.target_lookup_query='field'
             w.show_targets([row])
-        self.assertEqual(w.target_distance_pc.value(),135)
+        self.assertEqual(w.target_distance_pc.value(),140)
         self.assertEqual(w.zoom_mode.currentData(),'target_distance')
         self.assertEqual(w.target_info['name'],'M45')
-        self.assertIn('test-reference',w.target_origin.text())
-        w.target_distance_pc.setValue(140)
+        self.assertIn('approximate',w.target_origin.text())
+        self.assertEqual(w.target_info['measurements'][0]['bibcode'],'test-reference')
+        w.target_distance_pc.setValue(150)
         self.assertIsNone(w.target_info)
         self.assertEqual(w.target_origin.text(),'Manual target distance')
 

@@ -31,3 +31,16 @@ class TargetTests(unittest.TestCase):
         self.assertIn("CIRCLE('ICRS',359.",query)
         self.assertIn('LEFT JOIN mesDistance',query)
         self.assertIn('ORDER BY nbref DESC',query)
+
+class ApproximateTargetTests(unittest.TestCase):
+    def test_one_object_one_rounded_distance_keeps_sources(self):
+        from targets import approximate_targets
+        rows=[dict(name='M45',distance_pc=d,bibcode=str(d)) for d in (130,135,136)]
+        result=approximate_targets(rows)
+        self.assertEqual(len(result),1)
+        self.assertEqual(result[0]['distance_pc'],140)
+        self.assertEqual(result[0]['distance_range_pc'],[130,136])
+        self.assertEqual(result[0]['measurements'],rows)
+    def test_unknown_distance_stays_unknown(self):
+        from targets import approximate_targets
+        self.assertIsNone(approximate_targets([dict(name='nebula',distance_pc=None)])[0]['distance_pc'])

@@ -188,3 +188,7 @@ Use **Find targets in this field…** in Flight after opening a solved image or 
 Choose an individual published distance measurement. The picker shows its method, errors when provided, quality flag and bibliography code. Several measurements can disagree; SPACER neither chooses a preferred paper nor converts redshift to distance. Entries without a usable distance support manual entry. Selected measurements switch to target-distance perspective. Editing the distance clears catalogue provenance. Project/preview/JSON retain the selection and reference; reopening a saved project needs no query to restore the chosen distance.
 
 Lookup is limited to 6° radius and rejects overflow rather than silently returning a partial result. Objects whose centres lie outside the frame and unsupported object types are excluded. Travel must still be smaller than the selected distance.
+
+### Simplified picker (0.13.1)
+
+Each object now appears once with an approximate distance. The practical default is the median of available published estimates rounded to two significant figures; it is an animation input, not a new scientific measurement. Original measurements/references and their range stay in saved metadata. No paper selection is required; manual adjustment remains available.
