@@ -52,6 +52,27 @@ class LauncherTests(unittest.TestCase):
         w.zoom.setValue(10);self.assertEqual(w.zoom_percent(),900)
         self.assertEqual(w.zoom.text(),'10×')
 
+    def test_main_motion_controls_are_contextual_and_details_are_advanced(self):
+        w=self.window
+        self.assertTrue(w.zoom.isVisible())
+        self.assertFalse(w.target_row.isVisible())
+        self.assertFalse(w.travel_pc.isVisible())
+        self.assertFalse(w.target_distance_pc.isVisible())
+        self.assertFalse(w.target_origin.isVisible())
+        w.zoom_mode.setCurrentIndex(w.zoom_mode.findData('target_distance'));self.app.processEvents()
+        self.assertFalse(w.zoom.isVisible())
+        self.assertTrue(w.find_targets_button.isVisible())
+        self.assertTrue(w.perspective_note.isVisible())
+        self.assertFalse(w.travel_pc.isVisible())
+        w.target_distance_pc.setValue(400)
+        self.assertIn('400 pc',w.target_summary.text())
+        self.assertIn('1.25',w.perspective_note.text())
+        w.advanced_toggle.setChecked(True);self.app.processEvents()
+        self.assertTrue(w.travel_pc.isVisible());self.assertTrue(w.target_distance_pc.isVisible())
+        w.advanced_dialog.close()
+        w.zoom_mode.setCurrentIndex(0);self.app.processEvents()
+        self.assertTrue(w.zoom.isVisible());self.assertFalse(w.target_row.isVisible())
+
     def test_project_restore_and_switch_clear_previous_exports(self):
         w=self.window;saved=self.folder/'saved';saved.mkdir()
         (saved/'scene_iterative.json').write_text('{}')
@@ -194,7 +215,7 @@ class LauncherTests(unittest.TestCase):
                 w.open_image();chooser.assert_called_once()
             self.assertTrue(w.start.isEnabled());self.assertFalse(w.coordinates.isVisible())
             self.assertTrue(w.solver_settings.isHidden())
-            self.assertIn('Astro-TIFF',w.project_hint.text())
+            self.assertIn('Astro-TIFF',w.project_hint.toolTip())
             w.executable.setText('/bin/sh');w.ffmpeg.setText('/bin/sh')
             with patch.object(w,'launch') as launch:
                 w.begin();launch.assert_called_once()
@@ -373,7 +394,7 @@ class LauncherTests(unittest.TestCase):
                 w.use_image(path);self.app.processEvents();solver.assert_not_called()
             self.assertTrue(w.start.isEnabled());self.assertFalse(w.coordinates.isVisible())
             self.assertFalse(w.target.isVisible());self.assertTrue(w.solver_settings.isHidden())
-            self.assertIn('JPEG EXIF',w.project_hint.text());self.assertEqual(w.epoch.text(),'2026-07-17')
+            self.assertIn('JPEG EXIF',w.project_hint.toolTip());self.assertEqual(w.epoch.text(),'2026-07-17')
         finally: w.close()
 
     def test_motion_limit_is_editable_for_saved_fields_and_restored(self):

@@ -131,43 +131,50 @@ class FlythroughWindow(QWidget):
         layout.addWidget(self.project_group)
 
         self.flight_group=QGroupBox('Flight');form=QFormLayout(self.flight_group)
+        self.flight_form=form
         form.setContentsMargins(16,16,16,16);form.setVerticalSpacing(12)
         self.seconds=QSpinBox();self.seconds.setRange(4,600);self.seconds.setValue(60)
         self.seconds.setSuffix(' s');form.addRow('Duration',self.seconds)
+        self.zoom_mode=QComboBox()
+        self.zoom_mode.addItem('Camera zoom','independent')
+        self.zoom_mode.addItem('Travel toward a target','target_distance')
+        form.addRow('Motion',self.zoom_mode)
         self.zoom=ZoomSpinBox();self.zoom.setDecimals(3);self.zoom.setRange(1,101)
         self.zoom.setSingleStep(.1);self.zoom.setValue(1.3);self.zoom.setSuffix('×')
         form.addRow('Final zoom',self.zoom)
-        self.zoom_mode=QComboBox()
-        self.zoom_mode.addItem('Independent zoom','independent')
-        self.zoom_mode.addItem('Perspective from target distance','target_distance')
-        form.addRow('Zoom mode',self.zoom_mode)
-        self.travel_pc=QDoubleSpinBox();self.travel_pc.setRange(0,1e12);self.travel_pc.setDecimals(3);self.travel_pc.setValue(80);self.travel_pc.setSuffix(' pc')
-        form.addRow('Travel distance',self.travel_pc)
-        self.target_distance_pc=QDoubleSpinBox();self.target_distance_pc.setRange(0,1e12);self.target_distance_pc.setDecimals(3);self.target_distance_pc.setValue(0);self.target_distance_pc.setSpecialValueText('Choose a target or enter distance');self.target_distance_pc.setSuffix(' pc')
-        form.addRow('Target distance',self.target_distance_pc)
-        self.find_targets_button=QPushButton('Find targets in this field…')
-        self.find_targets_button.setToolTip('Online SIMBAD lookup using the plate solution. Catalogue positions in the frame, not detections in the image.')
+        self.target_row=QWidget();target_layout=QHBoxLayout(self.target_row)
+        target_layout.setContentsMargins(0,0,0,0)
+        self.target_summary=QLabel('No target selected');self.target_summary.setWordWrap(True)
+        self.find_targets_button=QPushButton('Choose target…')
+        self.find_targets_button.setToolTip('Find familiar objects using the solved sky position. Manual distance is available in Advanced settings.')
         self.find_targets_button.clicked.connect(self.lookup_targets)
-        form.addRow(self.find_targets_button)
-        self.target_origin=QLabel('No target distance selected');self.target_origin.setWordWrap(True);form.addRow(self.target_origin)
-        self.target_distance_pc.valueChanged.connect(self.clear_target_origin)
-        self.target_distance_pc.setToolTip('User-supplied distance to the flat background plane. Must exceed travel distance; no target distance is inferred.')
+        target_layout.addWidget(self.target_summary,1);target_layout.addWidget(self.find_targets_button)
+        form.addRow('Target',self.target_row)
         self.perspective_note=QLabel();self.perspective_note.setWordWrap(True);form.addRow(self.perspective_note)
-        def update_motion_controls():
-            physical=self.zoom_mode.currentData()=='target_distance'
-            self.zoom.setEnabled(not physical);self.target_distance_pc.setEnabled(physical)
-            d,s=self.target_distance_pc.value(),self.travel_pc.value()
-            self.perspective_note.setVisible(physical)
-            self.perspective_note.setText('Choose a target or enter its approximate distance.' if d==0 else (f'Derived final enlargement: {d/(d-s):.4g}×. Final zoom above is unused.' if d>s else 'Travel must be less than target distance.'))
-        self.zoom_mode.currentIndexChanged.connect(update_motion_controls)
-        self.travel_pc.valueChanged.connect(update_motion_controls)
-        self.target_distance_pc.valueChanged.connect(update_motion_controls);update_motion_controls()
-
-        form.addRow(QLabel('24 fps · up to 1920 px wide · Iterative scene'))
         layout.addWidget(self.flight_group)
 
         self.advanced=QWidget();advanced_layout=QFormLayout(self.advanced)
         advanced_layout.setContentsMargins(0,8,0,0);advanced_layout.setVerticalSpacing(10)
+        self.motion_settings=QGroupBox('Motion details');motion_form=QFormLayout(self.motion_settings)
+        motion_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.travel_pc=QDoubleSpinBox();self.travel_pc.setRange(0,1e12);self.travel_pc.setDecimals(3);self.travel_pc.setValue(80);self.travel_pc.setSuffix(' pc')
+        self.travel_pc.setToolTip('Forward travel controls the parallax of moving stars in either motion style.')
+        motion_form.addRow('Travel distance',self.travel_pc)
+        self.target_distance_pc=QDoubleSpinBox();self.target_distance_pc.setRange(0,1e12);self.target_distance_pc.setDecimals(3);self.target_distance_pc.setValue(0)
+        self.target_distance_pc.setSpecialValueText('Choose a target or enter distance');self.target_distance_pc.setSuffix(' pc')
+        motion_form.addRow('Manual target distance',self.target_distance_pc)
+        self.target_distance_pc.setToolTip('Approximate distance of the flat background plane. Must exceed travel distance. Editing clears catalogue attribution.')
+        self.target_origin=QLabel('No target distance selected');self.target_origin.setWordWrap(True)
+        self.target_origin.setFixedHeight(self.target_origin.fontMetrics().lineSpacing()*2+4)
+        motion_form.addRow(self.target_origin)
+        self.motion_settings.setToolTip('Exports use 24 fps, up to 1920 px wide, with 1.5-second easing at either end.')
+        advanced_layout.addRow(self.motion_settings)
+        self.target_distance_pc.valueChanged.connect(self.clear_target_origin)
+        self.zoom_mode.currentIndexChanged.connect(self.refresh_motion_ui)
+        self.travel_pc.valueChanged.connect(self.refresh_motion_ui)
+        self.target_distance_pc.valueChanged.connect(self.refresh_motion_ui)
+        self.refresh_motion_ui()
+
         self.preparation=QGroupBox('First preparation only');prep=QFormLayout(self.preparation)
         advanced_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         prep.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -188,15 +195,17 @@ class FlythroughWindow(QWidget):
         prep.addRow(self.date_origin)
         self.epoch.textEdited.connect(self.update_date_origin)
         date_hint=QLabel('Approximate capture year is enough for ordinary matching. You can correct the detected date or enter just a year.')
-        date_hint.setWordWrap(True);prep.addRow(date_hint)
+        self.epoch.setToolTip(date_hint.text())
         self.epoch.setToolTip('Gaia positions are corrected for stellar proper motion at this date. A nearby estimate is better than an unrelated date.')
         self.new_preparation_note=('Uses a copy of the current Siril pixels.' if siril else 'Uses file pixels. Supply an already-stretched image.')+' First preparation needs internet for Gaia.\nIterative separation is experimental; ambiguous star groups remain flat.'
         self.preparation_note=QLabel(self.new_preparation_note)
         self.preparation_note.setWordWrap(True);self.preparation_note.setFixedHeight(self.preparation_note.fontMetrics().lineSpacing()*3+4)
         prep.addRow(self.preparation_note);advanced_layout.addRow(self.preparation)
+        self.calculation_settings=QGroupBox('Star calculations');calculation_form=QFormLayout(self.calculation_settings)
+        calculation_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.star_limit=QSpinBox();self.star_limit.setRange(100,MAX_MOVING_STARS);self.star_limit.setSingleStep(1000);self.star_limit.setValue(DEFAULT_MAX_STARS)
         self.star_limit.setToolTip('Fewer moving stars make preparation and rendering faster. Unselected stars stay in the photograph. Use Recalculate stars to fit additional stars from the saved image layers.')
-        advanced_layout.addRow('Moving stars (maximum)',self.star_limit)
+        calculation_form.addRow('Moving stars (maximum)',self.star_limit)
         self.recalculation=QWidget();recalculation_layout=QVBoxLayout(self.recalculation)
         recalculation_layout.setContentsMargins(0,0,0,0)
         self.calculation_hint=QLabel();self.calculation_hint.setWordWrap(True)
@@ -205,7 +214,7 @@ class FlythroughWindow(QWidget):
         self.recalculate_button=QPushButton('Recalculate stars');self.recalculate_button.setAutoDefault(False)
         self.recalculate_button.clicked.connect(self.recalculate_stars)
         recalculation_layout.addWidget(self.recalculate_button,alignment=Qt.AlignmentFlag.AlignLeft)
-        advanced_layout.addRow(self.recalculation)
+        calculation_form.addRow(self.recalculation);advanced_layout.addRow(self.calculation_settings)
         self.star_limit.valueChanged.connect(self.update_calculation_hint)
         self.solver_settings=QGroupBox('Plate solving (ASTAP)');solver_form=QFormLayout(self.solver_settings)
         solver_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -231,20 +240,25 @@ class FlythroughWindow(QWidget):
         solver_form.addRow('Existing solution',self.choose_coordinates)
         if not siril: advanced_layout.addRow(self.solver_settings)
         else: self.solver_settings.hide()
-        self.ffmpeg=QLineEdit(find_tool('ffmpeg'));advanced_layout.addRow('FFmpeg',self.path_row(self.ffmpeg,False))
+        self.export_settings=QGroupBox('Output and tools');export_form=QFormLayout(self.export_settings)
+        export_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.ffmpeg=QLineEdit(find_tool('ffmpeg'));export_form.addRow('FFmpeg',self.path_row(self.ffmpeg,False))
         name=self.image_filename() or 'image'
         self.output=QLineEdit(str(Path(name).expanduser().resolve().parent/'flythrough'/Path(name).stem))
         self.output.setPlaceholderText('Choose a project folder')
-        advanced_layout.addRow('Project folder',self.path_row(self.output,True))
+        export_form.addRow('Project folder',self.path_row(self.output,True));advanced_layout.addRow(self.export_settings)
         self.advanced_toggle=self.disclosure(layout,'Advanced settings',self.advanced)
 
+        self.activity=QWidget();activity_layout=QVBoxLayout(self.activity)
+        activity_layout.setContentsMargins(0,0,0,0);activity_layout.setSpacing(4)
+        layout.addWidget(self.activity)
         self.status=QLabel('Ready to prepare this image.');self.status.setWordWrap(True)
         self.status.setFixedHeight(self.status.fontMetrics().lineSpacing()*2+8)
         self.status.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
-        layout.addWidget(self.status)
+        activity_layout.addWidget(self.status)
         self.progress_bar=QProgressBar();self.progress_bar.setRange(0,0);self.progress_bar.setTextVisible(False)
-        self.progress_bar.setFixedHeight(18);self.progress_bar.hide();layout.addWidget(self.progress_bar)
-        self.render_counter=QLabel();self.render_counter.setWordWrap(True);self.render_counter.hide();layout.addWidget(self.render_counter)
+        self.progress_bar.setFixedHeight(18);self.progress_bar.hide();activity_layout.addWidget(self.progress_bar)
+        self.render_counter=QLabel();self.render_counter.setWordWrap(True);self.render_counter.hide();activity_layout.addWidget(self.render_counter)
         self.buttons=QHBoxLayout();layout.addLayout(self.buttons)
         self.preview=QPushButton('Open preview');self.preview.setEnabled(False)
         self.preview.clicked.connect(lambda: self.open_result('preview.html'));self.buttons.addWidget(self.preview)
@@ -308,6 +322,24 @@ class FlythroughWindow(QWidget):
         self.remember_image()
         if Path(self.output.text()).is_dir() and any(Path(self.output.text()).iterdir()): self.use_prepared(Path(self.output.text()))
 
+    def refresh_motion_ui(self,*_):
+        physical=self.zoom_mode.currentData()=='target_distance'
+        self.flight_form.setRowVisible(self.zoom,not physical)
+        self.zoom.setEnabled(not physical)
+        self.flight_form.setRowVisible(self.target_row,physical)
+        self.flight_form.setRowVisible(self.perspective_note,physical)
+        self.target_distance_pc.setEnabled(physical)
+        d,s=self.target_distance_pc.value(),self.travel_pc.value()
+        from targets import approximate_distance_label
+        if d:
+            name=self.target_info['name'] if self.target_info else 'Manual distance'
+            self.target_summary.setText(f'{name} · {approximate_distance_label(d)}')
+        else:self.target_summary.setText('No target selected')
+        self.target_summary.setToolTip(self.target_origin.text())
+        self.perspective_note.setText('Choose a target, or enter a distance in Advanced settings.' if not d else (
+            ('Very little background zoom at this distance.' if d/(d-s)<1.005 else f'Final enlargement: {d/(d-s):.3g}×') if d>s else 'Reduce travel distance in Advanced settings; it must be less than the target distance.'))
+        if hasattr(self,'start'):self.fit_main_window()
+
     def reset_target_distance(self):
         self.target_distance_pc.setValue(0)
         self.clear_target_origin()
@@ -316,6 +348,7 @@ class FlythroughWindow(QWidget):
     def clear_target_origin(self,*_):
         self.target_info=None
         self.target_origin.setText('Manual target distance')
+        self.refresh_motion_ui()
 
     def target_header(self):
         from astropy.io import fits
@@ -341,7 +374,7 @@ class FlythroughWindow(QWidget):
         except Exception as exc:self.show_problem('Cannot find targets',str(exc))
 
     def target_lookup_finished(self):
-        self.find_targets_button.setText('Find targets in this field…');self.find_targets_button.setEnabled(True)
+        self.find_targets_button.setText('Choose target…');self.find_targets_button.setEnabled(True)
 
     def show_targets(self,rows):
         from targets import field_query
@@ -355,7 +388,7 @@ class FlythroughWindow(QWidget):
         rows=approximate_targets(rows)
         dialog=QDialog(self);dialog.setWindowTitle('Choose a target')
         layout=QVBoxLayout(dialog)
-        note=QLabel('Main targets: Messier, IC, NGC, then other familiar catalogues. Choose an approximate distance; you can adjust it afterwards.')
+        note=QLabel('Choose the object you want to travel toward.')
         note.setWordWrap(True);layout.addWidget(note)
         choice=QComboBox()
         for row in rows:
@@ -365,7 +398,7 @@ class FlythroughWindow(QWidget):
         details=QLabel();details.setWordWrap(True);layout.addWidget(details)
         def update_details():
             row=choice.currentData()
-            details.setText('Approximate catalogue distance; references are saved with the project.' if row['distance_pc'] else 'No distance available. You can enter one manually.')
+            details.setText('Approximate distance. You can adjust it in Advanced settings.' if row['distance_pc'] else 'No distance available. Enter one in Advanced settings.')
             details.setToolTip(row['distance_summary'])
         choice.currentIndexChanged.connect(update_details);update_details()
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
@@ -381,6 +414,7 @@ class FlythroughWindow(QWidget):
         self.target_info=dict(row,selected_at=datetime.now().astimezone().isoformat())
         self.target_origin.setText(f"{row['name']} · approximate SIMBAD distance")
         self.zoom_mode.setCurrentIndex(self.zoom_mode.findData('target_distance'))
+        self.refresh_motion_ui()
 
     def set_date_info(self,info):
         self.auto_date_info=info
@@ -510,9 +544,9 @@ class FlythroughWindow(QWidget):
         calculation_error=None
         try: ready=(calculation_folder(folder)/'scene_iterative.json').is_file()
         except ValueError as exc: ready=False;calculation_error=str(exc)
-        new_hint=('Current Siril image · uses current pixels. For a linear image, choose autostretch in Advanced settings.' if self.siril else
-            ('File image · uses already-stretched pixels.' if self.file_source else 'Open a finished image, or return to a saved project.'))
-        self.project_hint.setText(('Saved image · ready to render; analysis is reused.' if ready else 'Saved image · missing preparation steps will resume.') if saved else new_hint)
+        new_hint=('Uses the current Siril image.' if self.siril else
+            ('Ready to prepare.' if self.file_source else 'Use a finished, stretched image.'))
+        self.project_hint.setText('Uses the saved project image.' if saved else new_hint)
         self.project_hint.setToolTip(str(folder))
         self.preparation.setEnabled(not saved or read_project(folder).get('stage')=='solved')
         self.update_date_origin()
@@ -524,7 +558,7 @@ class FlythroughWindow(QWidget):
             self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()
             self.result=None;self.result_stem=None
             self.preview.setEnabled(False);self.video.setEnabled(False)
-        self.status.setText('Ready to render from the saved project.' if saved else ('Ready to prepare this image.' if self.siril or self.file_source else 'Open an image or project to begin.'))
+        self.status.setText(('Ready to render from the saved project.' if ready else 'Ready to resume preparation.') if saved else ('Ready to prepare this image.' if self.siril or self.file_source else 'Open an image or project to begin.'))
         file_selected=bool(not self.siril and self.file_source and not saved)
         missing=bool(file_selected and not self.file_source.has_coordinates)
         embedded=bool(file_selected and self.file_source.has_coordinates and self.file_source.wcs_path is None)
@@ -533,7 +567,8 @@ class FlythroughWindow(QWidget):
         self.solve_button.setEnabled(missing)
         if embedded:
             kind='FITS' if self.file_source.is_fits else ('JPEG EXIF' if self.file_source.path.suffix.lower() in {'.jpg','.jpeg'} else 'Astro-TIFF')
-            self.project_hint.setText(kind+' · sky coordinates and available observation date read from the image.')
+            self.project_hint.setText('Sky position available.')
+            self.project_hint.setToolTip(kind+' · sky coordinates and available observation date read from the image.\n'+str(folder))
         if missing:
             self.coordinates_hint.setText('Sky position is not saved in this image.\nSolve it with ASTAP to prepare your flight.')
             self.status.setText('Solve sky position above. ASTAP settings are under Advanced settings.')
@@ -804,6 +839,7 @@ class FlythroughWindow(QWidget):
             solver=state.get('astrometry',{})
             if solver.get('executable'): self.astap.setText(solver['executable'])
             if solver.get('database'): self.database.setText(solver['database'])
+        self.refresh_motion_ui()
         self.restore_export_links(folder)
         if folder!=self.prepared:
             self.render_succeeded=False;self.progress_bar.hide();self.render_counter.hide()

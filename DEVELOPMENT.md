@@ -164,3 +164,11 @@ SIMBAD classifies M33 as GiG, not plain G. Include descendants using otypedef.pa
 ## 0.14.2 familiar target ordering
 
 Filter candidate basic rows by familiar ident aliases before applying the bounded object list; fetch matching aliases for selected IDs separately. Prefer and naturally sort M, IC, NGC, then the curated common catalogues in targets.CATALOGUES. Do not use SIMBAD primary names alone: M45's primary is Cl Melotte 22. Preserve simbad_name/aliases on measurement summaries. Survey-only identifiers are intentionally excluded from the default picker.
+
+## 0.15.0 interface simplicity
+
+Main Flight is contextual: Duration + Motion and either Final zoom or a target summary/Choose target button. Keep raw parsec inputs and target provenance in Advanced → Motion details. Group remaining Advanced controls into preparation, calculations and output/tools; preserve section visibility/geometry across saved/new stages. No tabs or hidden preparation/recalculation sections were introduced.
+
+refresh_motion_ui owns contextual visibility and summaries; refresh it after loading settings or assigning catalogue provenance, not just value changes. Use setRowVisible so labels disappear with fields. Never change render semantics when hiding a control. Keep processing/progress/action geometry stable through a reserved compact activity block. Concise main hints should not repeat the status; image metadata belongs in tooltips and logs.
+
+Visual review: empty/solved M33 input, camera zoom, unset and selected target perspective, Advanced. At 680px width, reviewed main windows fit the 800px test screen without scrolling; Advanced retains small-screen fallback. Existing tests cover unsolved images, saved/partial projects, date/tool errors, progress and cancellation.

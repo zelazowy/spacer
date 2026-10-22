@@ -175,15 +175,15 @@ The latest [interface audit](INTERFACE_AUDIT.md) records inspected states, fixed
 
 ## Target-distance perspective (0.12.0)
 
-In Flight, choose **Perspective from target distance**, then enter **Target distance** and **Travel distance** in parsecs. No target distance is inferred. The target/background is treated as a flat plane: 400 pc with 80 pc travel yields 1.25× enlargement. Each moving star uses its own distance, without adding independent zoom a second time. The photographed stellar PSF stays fixed. Unseparated background stars share the assumed target plane; this is a photographic approximation, not a complete 3D reconstruction.
+In Flight, choose **Travel toward a target**, then enter **Target distance** and **Travel distance** in parsecs. No target distance is inferred. The target/background is treated as a flat plane: 400 pc with 80 pc travel yields 1.25× enlargement. Each moving star uses its own distance, without adding independent zoom a second time. The photographed stellar PSF stays fixed. Unseparated background stars share the assumed target plane; this is a photographic approximation, not a complete 3D reconstruction.
 
-**Independent zoom** remains the default; its Final zoom control applies the familiar extra enlargement. Both modes now expose travel distance. Travel must be less than target distance in perspective mode. Settings are saved with the project and new exports; existing prepared fields and older exports remain intact.
+**Camera zoom** remains the default; its Final zoom control applies the familiar extra enlargement. Both modes now expose travel distance. Travel must be less than target distance in perspective mode. Settings are saved with the project and new exports; existing prepared fields and older exports remain intact.
 
 Bright stationary stars can lack usable catalogue distances, fail the astrometric/uncertainty screens, or be deferred by image separation (unresolved companions, overlapping groups, fit failure or work limits). We do not infer distance from photographed brightness or relax separation just to animate more stars. Supplementary bright-star catalogues are not yet integrated.
 
 ## Catalogue target picker (0.13.0)
 
-Use **Find targets in this field…** in Flight after opening a solved image or project. An optional online SIMBAD query lists supported nebulae, clusters and galaxies whose catalogue centres fall inside the WCS image footprint. These are catalogue associations, not detections or proof an object is visible. Only field coordinates are sent; image pixels stay local.
+Use **Choose target…** in Flight after opening a solved image or project. An optional online SIMBAD query lists supported nebulae, clusters and galaxies whose catalogue centres fall inside the WCS image footprint. These are catalogue associations, not detections or proof an object is visible. Only field coordinates are sent; image pixels stay local.
 
 Choose an individual published distance measurement. The picker shows its method, errors when provided, quality flag and bibliography code. Several measurements can disagree; SPACER neither chooses a preferred paper nor converts redshift to distance. Entries without a usable distance support manual entry. Selected measurements switch to target-distance perspective. Editing the distance clears catalogue provenance. Project/preview/JSON retain the selection and reference; reopening a saved project needs no query to restore the chosen distance.
 
@@ -201,7 +201,7 @@ For an existing project, use **Advanced settings → Recalculate stars**, then r
 
 ### Image switching and dense fields (0.14.1)
 
-Opening another image clears its target distance instead of carrying over the previous image's value. Choose **Find targets in this field…** or enter the new distance manually; SPACER does not silently guess one on image load. Saved projects restore their own settings, except catalogue targets demonstrably outside the saved footprint.
+Opening another image clears its target distance instead of carrying over the previous image's value. Choose **Choose target…** or enter the new distance manually; SPACER does not silently guess one on image load. Saved projects restore their own settings, except catalogue targets demonstrably outside the saved footprint.
 
 Dense fields such as M33 use a bounded list of main catalogue objects, with their distance measurements fetched separately. No smaller crop is needed merely because a field contains many catalogue entries.
 
@@ -210,3 +210,14 @@ Dense fields such as M33 use a bounded list of main catalogue objects, with thei
 The default target list now shows familiar deep-sky objects, ordered **Messier → IC → NGC**, followed by common nebula/cluster catalogues (Sharpless, vdB, Barnard, LDN/LBN, Melotte and Collinder). Numbers sort naturally within each catalogue. Survey-only entries such as WISE/2MASS coordinate names are excluded. Familiar aliases are preferred—for example, **M45** instead of **Cl Melotte 22**—while original catalogue identifiers remain in saved provenance.
 
 Discovery is still bounded to 100 main candidates. If your target is outside these catalogues or has no published distance, manual distance entry remains available.
+
+## Simplified interface (0.15.0)
+
+The main window shows **Duration** and **Motion**, followed by only the controls needed for that style:
+
+- **Camera zoom:** set Final zoom.
+- **Travel toward a target:** choose the main object and see its approximate distance. Final zoom is hidden because perspective determines it.
+
+**Advanced settings** contains Motion details (travel in pc, manual target distance and source), First preparation only, Star calculations (limit and Recalculate stars), and Output and tools. Standalone plate-solver settings appear there when needed. To supply a manual target distance, choose Travel toward a target, then open Advanced → Motion details.
+
+Technical source details are in tooltips/Advanced; full processing logs remain in Details. Existing project values, rendering settings and caches are unchanged.

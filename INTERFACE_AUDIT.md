@@ -27,3 +27,9 @@ An isolated real M8 project reused the supplied image/starless/WCS/catalogue wit
 ## Layout-stability correction — 2026-10-18
 
 The user rejected changing the settings layout between new and continued projects. Preparation/recalculation sections now remain visible; fixed explanation space prevents the moving-star, FFmpeg and project-folder rows from shifting. Saved projects show their recorded engine/path with preparation controls disabled. Their starless image is reused, so editing an executable path would not alter existing calculations. Solver visibility retains its earlier explicit requirement for unsolved images only.
+
+## Simplicity revision — 0.15.0, 2026-10-22
+
+Reduced the main Flight panel from simultaneous zoom/travel/distance/catalogue/provenance rows to Duration, Motion and one contextual choice. Parsecs and manual overrides moved to a stable Motion details group in Advanced. Grouped calculations and output paths; removed repeated main-screen metadata/status prose. Activity status/progress uses tighter spacing while preserving reserved geometry.
+
+Checked screenshots for camera zoom, target selection and selected M33, plus grouped Advanced. Main/Advanced fit the 800px offscreen test display with no scrolling in these states. Rendering and project schemas are unchanged.

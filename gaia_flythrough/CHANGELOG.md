@@ -1,3 +1,11 @@
+# 0.15.0 — 2026-10-22
+
+- Simplify the shared main Flight panel to Duration, Motion and the controls for the selected style.
+- Camera zoom shows only Final zoom; Travel toward a target shows a compact target summary and Choose target action.
+- Move parsec inputs, manual target distance and source details to Advanced → Motion details. Group remaining advanced controls by preparation, star calculations and output/tools.
+- Remove duplicated status/metadata explanations from the main window; keep source metadata in tooltips, diagnostics in Details and concise perspective feedback.
+- Preserve saved settings, rendering geometry, full processing logs, stable preparation/recalculation sections and screen-bounded windows.
+
 # 0.14.2 — 2026-10-22
 
 - Restrict target discovery to familiar deep-sky catalogues rather than coordinate-named survey sources.
