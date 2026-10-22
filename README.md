@@ -221,3 +221,9 @@ The main window shows **Duration** and **Motion**, followed by only the controls
 **Advanced settings** contains Motion details (travel in pc, manual target distance and source), First preparation only, Star calculations (limit and Recalculate stars), and Output and tools. Standalone plate-solver settings appear there when needed. To supply a manual target distance, choose Travel toward a target, then open Advanced → Motion details.
 
 Technical source details are in tooltips/Advanced; full processing logs remain in Details. Existing project values, rendering settings and caches are unchanged.
+
+## ASTAP recovery improvements (0.16.0)
+
+The standalone solver now tries existing pointing/optics hints before wider auto-FOV searches, with additional compact-star recovery for processed images. Invalid equinox metadata and stale PC/SIP coordinate terms are cleaned on private solver copies/results. Explicit object and field-height settings still take precedence. Cancellation, shared timeout and detailed solver logs remain available.
+
+Every candidate is still confirmed on the original photographed pixels before a solution is saved. Input pixels and orientation are preserved; the Siril helper's optional mirror correction is not applied in SPACER. Existing solved projects do not need to be solved again.

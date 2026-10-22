@@ -1,3 +1,13 @@
+# 0.16.0 — 2026-10-22
+
+- Port relevant improvements from Siril_ASTAP_PlateSolve.py 0.5.0 into the standalone ASTAP path without importing Siril.
+- Repair undefined/invalid EQUINOX on private solver headers. Remove stale PC terms when ASTAP provides CD, and discard obsolete SIP coefficients from TAN-only results.
+- Try header-guided 500/2000-star and compact-peak strategies before auto-FOV fallbacks when pointing/optics hints exist; explicit object/FOV settings remain authoritative.
+- Build compact peaks once, skip redundant ordinary-image searches after insufficient star detection, and improve cancellation checks.
+- Clear stale temporary result sidecars; parse quoted/case-varied result flags, retain warnings and report unexpected exits with diagnostic paths.
+- Keep original-pixel confirmation, scale/parity/edge checks, shared timeout, original pixels and orientation unchanged. No new interface controls.
+- Real M33 validation: solved and confirmed, centre/corner differences 0.27/2.77 arcsec maximum against its existing WCS; source SHA-256 unchanged.
+
 # 0.15.0 — 2026-10-22
 
 - Simplify the shared main Flight panel to Duration, Motion and the controls for the selected style.

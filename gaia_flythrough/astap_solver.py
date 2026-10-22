@@ -68,9 +68,49 @@ def diagnostic_path(options):
             return Path(file.name)
 
 
+def solver_header(header):
+    """Repair undefined equinox only on the private solver copy."""
+    result=header.copy()
+    if 'EQUINOX' in result:
+        try: value=float(result['EQUINOX'])
+        except (ValueError,TypeError): value=float('nan')
+        if not np.isfinite(value) or not 1000<=value<=3000:
+            result['EQUINOX']=(2000.,'Undefined input equinox; use J2000')
+    return result
+
+
+def clean_solution_header(header):
+    """ASTAP sidecars may retain obsolete input PC and SIP coefficients."""
+    result=solver_header(header)
+    if any(re.fullmatch(r'CD[12]_[12]',key) for key in result):
+        for key in list(result):
+            if re.fullmatch(r'PC[12]_[12]',key):del result[key]
+    if not any('-SIP' in str(result.get(key,'')) for key in ('CTYPE1','CTYPE2')):
+        for key in list(result):
+            if re.fullmatch(r'(?:A|B|AP|BP)_(?:ORDER|DMAX|\d+_\d+)',key):del result[key]
+    return result
+
+
+def has_pointing_hints(header):
+    return any(all(header.get(key) not in (None,'') for key in pair)
+        for pair in (('OBJCTRA','OBJCTDEC'),('RA','DEC'),('CRVAL1','CRVAL2')))
+
+
+def has_search_hints(header):
+    """ASTAP can interpret pointing/optics metadata without replacing pixels."""
+    pointing=has_pointing_hints(header)
+    def positive(key):
+        try:return np.isfinite(float(header.get(key,0))) and float(header.get(key,0))>0
+        except (ValueError,TypeError):return False
+    optics=positive('FOCALLEN') and (positive('YPIXSZ') or positive('XPIXSZ'))
+    return pointing or optics
+
+
 def compact_star_proxy(mono,cancel=None):
     """Measured star peaks only, in the unchanged pixel grid; not a render layer."""
+    if cancel and cancel.is_set(): raise InterruptedError('Plate solving cancelled.')
     smooth=ndimage.gaussian_filter(mono,1)
+    if cancel and cancel.is_set(): raise InterruptedError('Plate solving cancelled.')
     light=np.maximum(smooth-ndimage.gaussian_filter(mono,10),0)
     if cancel and cancel.is_set(): raise InterruptedError('Plate solving cancelled.')
     peaks=(light==ndimage.maximum_filter(light,9))&(light>np.percentile(light,99))
@@ -81,12 +121,19 @@ def compact_star_proxy(mono,cancel=None):
     # Integer measured peaks preserve the verified proxy strategy. No resampling,
     # cropping, rotation or coordinate remapping is needed for the solved WCS.
     result[yy[order],xx[order]]=strength[order]
-    return ndimage.gaussian_filter(result,2)
+    result=ndimage.gaussian_filter(result,2)
+    if cancel and cancel.is_set(): raise InterruptedError('Plate solving cancelled.')
+    return result
 
 
 def run_attempt(executable,proxy,options,ra,dec,stars,log_path,progress,cancel,budget):
+    for suffix in ('.ini','.wcs'):
+        sidecar=proxy.with_suffix(suffix)
+        if sidecar.exists():sidecar.unlink()
     argv=[str(executable),'-f',str(proxy),'-r',str(options.radius),'-z',str(options.binning),
-          '-fov',str(options.fov),'-ra',str(ra),'-spd',str(dec+90),'-s',str(stars),'-sip','-wcs','-progress']
+          '-s',str(stars),'-sip','-wcs','-progress']
+    if options.fov is not None:argv+=['-fov',str(options.fov)]
+    if ra is not None and dec is not None:argv+=['-ra',str(ra),'-spd',str(dec+90)]
     if options.database: argv+=['-d',str(Path(options.database).expanduser().resolve())]
     progress(Diagnostic('ASTAP command: '+shlex.join(argv)))
     started=time.monotonic();last_output=started;last_heartbeat=started;timed_out=False
@@ -119,11 +166,16 @@ def run_attempt(executable,proxy,options,ra,dec,stars,log_path,progress,cancel,b
     if ini.exists():
         for line in ini.read_text(errors='replace').splitlines():
             if '=' in line:
-                key,value=line.split('=',1);values[key.strip()]=value.split('//')[0].strip()
+                key,value=line.split('=',1);values[key.strip().upper()]=value.split('//')[0].strip().strip(chr(34)).strip(chr(39))
+    if values.get('WARNING'):progress(Diagnostic('ASTAP warning: '+values['WARNING']))
     wcs_path=proxy.with_suffix('.wcs')
-    if process.returncode==0 and values.get('PLTSOLVD')=='T' and wcs_path.exists():
+    if process.returncode not in (0,1,2,16,32,33):
+        raise RuntimeError(f'ASTAP exited unexpectedly with code {process.returncode}. Diagnostic log: {log_path}')
+    if process.returncode==0 and values.get('PLTSOLVD','').upper()=='T' and wcs_path.exists():
         text=wcs_path.read_text(encoding='ascii').rstrip('\x00')
-        return fits.Header.fromstring(text,sep='\n' if '\n' in text else ''),''
+        result=clean_solution_header(fits.Header.fromstring(text,sep='\n' if '\n' in text else ''))
+        if values.get('WARNING'):result['WARNING']=values['WARNING']
+        return result,''
     reasons={1:'No matching star pattern found.',2:'Not enough usable stars detected.',16:'Could not read the solver image.',32:'ASTAP star database not found.',33:'Could not read the ASTAP star database.'}
     reason=values.get('ERROR') or reasons.get(process.returncode,f'Exit code {process.returncode}.')
     if process.returncode in (16,32,33):
@@ -134,7 +186,7 @@ def run_attempt(executable,proxy,options,ra,dec,stars,log_path,progress,cancel,b
 def refinement_consistent(seed,refined,width,height):
     """Reject gross shifts, parity changes and unstable distortion at image edges."""
     try:
-        before=seed.copy();after=refined.copy();before['NAXIS']=2;after['NAXIS']=2
+        before=clean_solution_header(seed);after=clean_solution_header(refined);before['NAXIS']=2;after['NAXIS']=2
         a=WCS(before,naxis=2);b=WCS(after,naxis=2)
         grid=np.array([[width/2,height/2],[0,0],[width-1,0],[0,height-1],[width-1,height-1]])
         errors=a.pixel_to_world(grid[:,0],grid[:,1]).separation(b.pixel_to_world(grid[:,0],grid[:,1])).arcsec
@@ -159,6 +211,7 @@ def solve_project(options,progress=lambda message:None,cancel=None):
     source=FileImageSource(options.source,getattr(options,'wcs_path',None))
     progress('Loading solver input: '+str(source.path))
     pixels,header=source.snapshot(allow_unsolved=True)
+    header=header.copy()
     progress(Diagnostic(f'Input: {pixels.shape[2]} × {pixels.shape[1]} pixels, {pixels.shape[0]} colour channels. Original file stays unchanged.'))
     info=getattr(options,'date_info',None) or (date_info(options.epoch,'Manual date') if options.epoch else source.date_info())
     if options.epoch: header['DATE-OBS']=options.epoch
@@ -180,31 +233,52 @@ def solve_project(options,progress=lambda message:None,cancel=None):
     log_path=diagnostic_path(options);options.diagnostic_log=str(log_path)
     log_path.write_text(f'SPACER v{VERSION}\nSource: {source.path}\n')
     progress('Solver diagnostic log: '+str(log_path))
-    strategies=[('expanded-star',2000),('compact-peaks',500),('standard',500)]
+    search_header=solver_header(header)
+    if search_header.get('EQUINOX')!=header.get('EQUINOX'):
+        progress(Diagnostic('Undefined/invalid EQUINOX in source metadata; using J2000 for the solver.'))
+    strategies=[]
+    if has_search_hints(search_header):
+        strategies += [('header-guided',500),('header-guided-expanded',2000),('header-guided-compact',500)]
+    strategies += [('expanded-star',2000),('compact-peaks',500),('standard',500)]
+    compact=None;compact_prepared=False;insufficient_original=False
     deadline=time.monotonic()+getattr(options,'timeout',600)
     solved=None;error='No matching star pattern found.';attempts=[]
     with tempfile.TemporaryDirectory(prefix='spacer_astap_') as work:
         for index,(strategy,stars) in enumerate(strategies):
             if cancel.is_set(): raise InterruptedError('Plate solving cancelled.')
+            use_compact=strategy in ('compact-peaks','header-guided-compact')
+            if insufficient_original and not use_compact:
+                progress(Diagnostic('Skipping ordinary-image retry after insufficient star detection.'));continue
             remaining=deadline-time.monotonic()
             if remaining<=0: raise RuntimeError('ASTAP timed out. Diagnostic log: '+str(log_path))
             proxy=Path(work)/f'proxy_{index+1}.fits'
             data=mono
-            if strategy=='compact-peaks':
-                progress('Building a compact-star proxy from measured peaks; keeping the original coordinate grid.')
-                data=compact_star_proxy(mono,cancel)
+            if use_compact:
+                if not compact_prepared:
+                    progress('Building a compact-star proxy from measured peaks; keeping the original coordinate grid.')
+                    compact=compact_star_proxy(mono,cancel);compact_prepared=True
+                data=compact
                 if data is None:
                     progress('Too few distinct peaks for a compact-star retry; skipping it.');continue
                 data=data/max(float(data.max()),1e-10)*65535
-            fits.PrimaryHDU(data,header).writeto(proxy)
+            fits.PrimaryHDU(data,search_header).writeto(proxy)
             progress(f'Solving sky position: attempt {index+1}/{len(strategies)} — {strategy}, up to {stars} stars.')
             remaining=deadline-time.monotonic()
             if remaining<=0: raise RuntimeError('ASTAP timed out. Diagnostic log: '+str(log_path))
             budget=remaining/(len(strategies)-index)
-            search=copy.copy(options)
-            if options.target.strip() and strategy!='standard': search.radius=min(options.radius,5)
+            search=copy.copy(options);search_ra,search_dec=ra,dec
+            if strategy.startswith('header-guided'):
+                search.fov=options.fov if options.fov else None
+                if options.target.strip():search.radius=min(options.radius,5)
+                elif has_pointing_hints(search_header):search.radius=min(options.radius,30)
+                if not options.target.strip():search_ra=search_dec=None
+            elif options.target.strip() and strategy!='standard':search.radius=min(options.radius,5)
             progress(Diagnostic(f'Attempt search radius: {search.radius:g}°.'))
-            solved,error=run_attempt(executable,proxy,search,ra,dec,stars,log_path,progress,cancel,budget)
+            solved,error=run_attempt(executable,proxy,search,search_ra,search_dec,stars,log_path,progress,cancel,budget)
+            if not use_compact and any(text in error.lower() for text in ('not enough usable stars','not enough stars','no stars')):
+                insufficient_original=True
+                progress(Diagnostic('Too few detected stars; trying processed-image recovery before wider searches.'))
+            if solved is not None:solved=clean_solution_header(solved)
             attempts.append(dict(strategy=strategy,stars=stars,fov=search.fov,radius=search.radius,solved=solved is not None,error=error))
             if solved is not None:
                 # Every first match is a seed. Confirm the measured scale and
@@ -222,7 +296,7 @@ def solve_project(options,progress=lambda message:None,cancel=None):
                     if not np.isfinite(guided.fov) or not 0<guided.fov<=180:
                         raise RuntimeError('ASTAP returned an invalid sky scale.')
                     original_proxy=Path(work)/f'original_confirmation_{index}.fits'
-                    fits.PrimaryHDU(mono,header).writeto(original_proxy)
+                    fits.PrimaryHDU(mono,search_header).writeto(original_proxy)
                     solved=None
                     measured_fov=guided.fov
                     for refinement_index,(refinement_stars,scale_factor) in enumerate(((5000,1),(2000,1),(3000,1.01))):
@@ -238,6 +312,7 @@ def solve_project(options,progress=lambda message:None,cancel=None):
                             refinement_stars,log_path,progress,cancel,remaining/2)
                         accepted=False
                         if candidate is not None:
+                            candidate=clean_solution_header(candidate)
                             accepted,comparison=refinement_consistent(seed,candidate,pixels.shape[2],pixels.shape[1])
                             if 'inexact scale' in str(candidate.get('WARNING','')).lower(): accepted=False
                             progress(Diagnostic(('Refinement accepted: ' if accepted else 'Refinement rejected: ')+comparison))

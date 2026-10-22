@@ -201,6 +201,96 @@ class SolverTests(unittest.TestCase):
         self.assertEqual([call.args[5] for call in run.call_args_list],[2000,5000,2000,3000])
         self.assertEqual(read_project(out)['astrometry']['maximum_stars'],3000)
 
+    def test_solver_header_repairs_equinox_without_mutating_input(self):
+        from astap_solver import solver_header
+        for value in (-1.7976931348623157e308,'invalid',0,4000):
+            header=fits.Header();header['EQUINOX']=value;header['OBJECT']='original'
+            cleaned=solver_header(header)
+            self.assertEqual(cleaned['EQUINOX'],2000)
+            self.assertEqual(header['EQUINOX'],value)
+            self.assertEqual(cleaned['OBJECT'],'original')
+        header=fits.Header();header['EQUINOX']=1950
+        self.assertEqual(solver_header(header)['EQUINOX'],1950)
+
+    def test_stale_pc_and_non_sip_coefficients_are_removed(self):
+        from astap_solver import clean_solution_header
+        raw=self.solution.copy()
+        raw['CD1_1']=-.01;raw['CD1_2']=0.;raw['CD2_1']=0.;raw['CD2_2']=.01
+        raw['PC1_1']=4.;raw['PC2_2']=4.
+        raw['A_ORDER']=2;raw['B_ORDER']=2;raw['A_2_0']=.1
+        clean=clean_solution_header(raw)
+        self.assertNotIn('PC1_1',clean);self.assertNotIn('A_ORDER',clean)
+        self.assertNotIn('A_2_0',clean)
+        np.testing.assert_allclose(WCS(clean).pixel_scale_matrix,[[-.01,0],[0,.01]])
+        self.assertIn('PC1_1',raw)
+        raw['CTYPE1']='RA---TAN-SIP';raw['CTYPE2']='DEC--TAN-SIP'
+        self.assertIn('A_2_0',clean_solution_header(raw))
+
+    def test_header_guided_attempt_preserves_hints_and_repairs_private_equinox(self):
+        from image_source import FileImageSource
+        pixels,header=FileImageSource(self.image).snapshot(allow_unsolved=True)
+        header['OBJCTRA']='03 47 13';header['OBJCTDEC']='+24 07 11'
+        header['FOCALLEN']=500;header['YPIXSZ']=3.76
+        header['EQUINOX']=-1.7976931348623157e308
+        def attempt(*args):
+            self.assertEqual(fits.getheader(args[1])['EQUINOX'],2000)
+            return self.solution.copy(),''
+        with patch('astap_solver.FileImageSource.snapshot',return_value=(pixels,header)),patch('astap_solver.run_attempt',side_effect=attempt) as run:
+            out=solve_project(self.options)
+        first=run.call_args_list[0].args
+        self.assertEqual(first[5],500);self.assertEqual(first[2].radius,30)
+        self.assertIsNone(first[2].fov);self.assertIsNone(first[3]);self.assertIsNone(first[4])
+        self.assertEqual(read_project(out)['astrometry']['strategy'],'header-guided+original-refinement')
+        self.assertEqual(header['EQUINOX'],-1.7976931348623157e308)
+        self.assertEqual(self.image.read_bytes(),self.original)
+
+    def test_insufficient_detection_skips_redundant_original_searches(self):
+        with patch('astap_solver.run_attempt',side_effect=[(None,'Not enough usable stars detected.'),(None,'no matching pattern')]) as run,patch('astap_solver.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)) as compact:
+            with self.assertRaisesRegex(RuntimeError,'could not solve'):solve_project(self.options)
+        self.assertEqual(run.call_count,2);compact.assert_called_once()
+        self.assertFalse(Path(self.options.output).exists())
+
+    def test_run_attempt_does_not_reuse_stale_success_sidecars(self):
+        from astap_solver import run_attempt
+        proxy=self.root/'proxy.fits';fits.PrimaryHDU(np.ones((12,16))).writeto(proxy)
+        proxy.with_suffix('.ini').write_text('PLTSOLVD=T')
+        proxy.with_suffix('.wcs').write_text(self.solution.tostring(padding=False))
+        def no_result(*args,**kwargs):
+            self.assertFalse(proxy.with_suffix('.ini').exists())
+            self.assertFalse(proxy.with_suffix('.wcs').exists())
+            return SimpleNamespace(poll=lambda:0,returncode=0)
+        with patch('astap_solver.subprocess.Popen',side_effect=no_result):
+            solved,_=run_attempt('/bin/sh',proxy,self.options,0,0,500,self.root/'attempt.log',lambda message:None,threading.Event(),10)
+        self.assertIsNone(solved)
+
+    def test_header_guided_command_and_ini_warning_are_preserved(self):
+        from astap_solver import run_attempt
+        proxy=self.root/'guided.fits';fits.PrimaryHDU(np.ones((12,16))).writeto(proxy)
+        options=SimpleNamespace(radius=30,binning=0,fov=None,database='')
+        def process(argv,**kwargs):
+            self.assertNotIn('-ra',argv);self.assertNotIn('-spd',argv);self.assertNotIn('-fov',argv)
+            proxy.with_suffix('.ini').write_text('pltsolvd="t"\nwarning="inexact scale"\n')
+            proxy.with_suffix('.wcs').write_text(self.solution.tostring(padding=False))
+            return SimpleNamespace(poll=lambda:0,returncode=0)
+        with patch('astap_solver.subprocess.Popen',side_effect=process):
+            result,_=run_attempt('/bin/sh',proxy,options,None,None,500,self.root/'guided.log',lambda m:None,threading.Event(),10)
+        self.assertEqual(result['WARNING'],'inexact scale')
+
+    def test_compact_proxy_cancels_before_expensive_filters(self):
+        from astap_solver import compact_star_proxy
+        cancel=threading.Event();cancel.set()
+        with patch('astap_solver.ndimage.gaussian_filter') as smooth:
+            with self.assertRaises(InterruptedError):compact_star_proxy(np.zeros((128,128)),cancel)
+            smooth.assert_not_called()
+
+    def test_crashed_astap_retains_diagnostic_path(self):
+        from astap_solver import run_attempt
+        proxy=self.root/'crash.fits';log=self.root/'crash.log'
+        with patch('astap_solver.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:-6,returncode=-6)):
+            with self.assertRaisesRegex(RuntimeError,'Diagnostic log:'):
+                run_attempt('/bin/sh',proxy,self.options,0,0,500,log,lambda m:None,threading.Event(),10)
+        self.assertTrue(log.exists())
+
     def test_refinement_rejects_edge_distortion_parity_and_inexact_scale(self):
         from astap_solver import refinement_consistent
         bad=self.solution.copy();bad['CDELT1']=-bad['CDELT1']

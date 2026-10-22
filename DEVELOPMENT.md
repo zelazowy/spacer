@@ -172,3 +172,13 @@ Main Flight is contextual: Duration + Motion and either Final zoom or a target s
 refresh_motion_ui owns contextual visibility and summaries; refresh it after loading settings or assigning catalogue provenance, not just value changes. Use setRowVisible so labels disappear with fields. Never change render semantics when hiding a control. Keep processing/progress/action geometry stable through a reserved compact activity block. Concise main hints should not repeat the status; image metadata belongs in tooltips and logs.
 
 Visual review: empty/solved M33 input, camera zoom, unset and selected target perspective, Advanced. At 680px width, reviewed main windows fit the 800px test screen without scrolling; Advanced retains small-screen fallback. Existing tests cover unsolved images, saved/partial projects, date/tool errors, progress and cancellation.
+
+## 0.16.0 ASTAP helper parity
+
+Compared both local Siril_ASTAP_PlateSolve.py copies; identical version 0.5.0. Port solver-side improvements only: invalid equinox repair, obsolete PC/SIP cleanup, header-guided attempts, reused compact proxy, insufficient-detection skips, early cancellation, stale-sidecar removal, robust INI flags and warnings/crash diagnostics. Do not import the Siril helper or replicate its source-overwrite/mirror workflow. Original-pixel confirmation and the shared deadline remain mandatory.
+
+With usable header hints, prepend 500/2000-star normal attempts and a compact attempt. Omit CLI RA/Dec or FOV overrides only when delegating those hints to ASTAP; explicit user target/FOV wins. Optics without pointing must not force a local 30° search. Validate this policy if changing plan order; preserve numeric-target 5° searches and original refinement samples/brackets.
+
+run_attempt cleans coordinate results before WCS construction. Final metadata merges operate on a private source-header copy. Keep INI WARNING on candidate headers so existing inexact-scale rejection works even when WCS sidecars omit it.
+
+Real installed ASTAP/D20 check used M33 Astro-TIFF and a temporary project. Header-guided-expanded plus original refinement succeeded; centre 0.27485 arcsec and maximum corner 2.76792 arcsec against the existing solution. Source SHA-256 unchanged. This is consistency against an existing WCS, not an independent astrometric accuracy estimate. Validation project/logs: /private/tmp/spacer-astap-v016-m33 and /private/tmp/spacer-astap-v016-logs. The GUI-linked ASTAP binary aborted under the restricted sandbox; the approved desktop run succeeded.
