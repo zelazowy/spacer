@@ -6,7 +6,7 @@
 
 SPACER turns a finished astrophotograph into a flythrough, using catalogue distances to move stars with depth-dependent parallax. Run it as a standalone Python desktop app or from Siril.
 
-Current version: **0.17.1**. Star separation is experimental, especially around bright stars with overlapping halos and diffraction spikes.
+Current version: **0.18.0**. Star separation is experimental, especially around bright stars with overlapping halos and diffraction spikes.
 
 ## Requirements
 
@@ -15,6 +15,8 @@ Current version: **0.17.1**. Star separation is experimental, especially around 
 - **StarXTerminator CLI** with its model/license, or **StarNet 2.5+** with its model, for star removal.
 - A plate-solved image, or **ASTAP** and its star database for the standalone app's optional solving step.
 - Internet for initial stellar-catalogue downloads and optional target lookup. Prepared projects render offline.
+
+Install the shared `astro-platesolve` library from the `siril_scripts` checkout before installing SPACER requirements (see setup below). Use the same editable source directory in Siril’s Python environment to share solver improvements. The library is currently installed from source, not PyPI.
 
 External engines, models and databases are installed separately. SPACER discovers available executables; their paths can be changed in Advanced settings.
 
@@ -25,6 +27,7 @@ git clone https://github.com/zelazowy/spacer.git
 cd spacer
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install -e /path/to/siril_scripts/shared/astro-platesolve
 python -m pip install -r requirements.txt
 python SPACER.py
 ```

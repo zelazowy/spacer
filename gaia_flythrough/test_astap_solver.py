@@ -41,7 +41,7 @@ class SolverTests(unittest.TestCase):
 
     def test_success_preserves_photo_and_reopens_without_solver(self):
         Path(self.options.output).mkdir() # Native folder pickers return existing empty directories.
-        with patch('astap_solver.subprocess.Popen',side_effect=self.fake_process):
+        with patch('astro_platesolve.astap.subprocess.Popen',side_effect=self.fake_process):
             out=solve_project(self.options)
         self.assertEqual(self.image.read_bytes(),self.original)
         with Image.open(self.image) as image: expected=np.flipud(np.asarray(image))/255
@@ -56,17 +56,17 @@ class SolverTests(unittest.TestCase):
         # Project preparation uses the committed pixels even if the input is gone.
         self.image.unlink()
         opts=SimpleNamespace(seconds=30,zoom=100,ffmpeg='ffmpeg',epoch='2025-01-01',engine='StarXTerminator',executable='/new/engine')
-        with patch('siril_pipeline.run_pipeline',return_value=out) as prepare,patch('astap_solver.subprocess.Popen') as solver:
+        with patch('siril_pipeline.run_pipeline',return_value=out) as prepare,patch('astro_platesolve.astap.subprocess.Popen') as solver:
             resume_project(out,opts)
             solver.assert_not_called();prepare.assert_called_once()
             self.assertEqual(opts.engine,'StarXTerminator');self.assertEqual(opts.epoch,'2025-01-01')
 
     def test_failed_process_and_invalid_wcs_do_not_create_project(self):
-        with patch('astap_solver.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:1,returncode=1)):
+        with patch('astro_platesolve.astap.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:1,returncode=1)):
             with self.assertRaisesRegex(RuntimeError,'could not solve'): solve_project(self.options)
         self.assertFalse(Path(self.options.output).exists())
         self.solution=fits.Header()
-        with patch('astap_solver.subprocess.Popen',side_effect=self.fake_process):
+        with patch('astro_platesolve.astap.subprocess.Popen',side_effect=self.fake_process):
             with self.assertRaisesRegex(RuntimeError,'valid celestial'): solve_project(self.options)
         self.assertFalse(Path(self.options.output).exists());self.assertEqual(self.image.read_bytes(),self.original)
 
@@ -75,24 +75,24 @@ class SolverTests(unittest.TestCase):
         def start(*args,**kwargs):
             cancel.set()
             return SimpleNamespace(poll=lambda:None,terminate=lambda:None,wait=lambda **kw:None)
-        with patch('astap_solver.subprocess.Popen',side_effect=start):
+        with patch('astro_platesolve.astap.subprocess.Popen',side_effect=start):
             with self.assertRaises(InterruptedError): solve_project(self.options,cancel=cancel)
         self.assertFalse(Path(self.options.output).exists());self.assertEqual(self.image.read_bytes(),self.original)
 
     def test_timeout_and_existing_project_are_safe(self):
         self.options.timeout=-1
-        with patch('astap_solver.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:None,terminate=lambda:None,wait=lambda **kw:None)):
+        with patch('astro_platesolve.astap.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:None,terminate=lambda:None,wait=lambda **kw:None)):
             with self.assertRaisesRegex(RuntimeError,'timed out'): solve_project(self.options)
         self.assertFalse(Path(self.options.output).exists())
         Path(self.options.output).mkdir()
         (Path(self.options.output)/'keep.txt').write_text('preserve existing files')
-        with patch('astap_solver.subprocess.Popen') as solver:
+        with patch('astro_platesolve.astap.subprocess.Popen') as solver:
             with self.assertRaisesRegex(ValueError,'existing projects'): solve_project(self.options)
             solver.assert_not_called()
 
     def test_solver_uses_labelled_filesystem_estimate_when_date_is_missing(self):
         self.options.epoch=''
-        with patch('astap_solver.subprocess.Popen',side_effect=self.fake_process):
+        with patch('astro_platesolve.astap.subprocess.Popen',side_effect=self.fake_process):
             out=solve_project(self.options)
         state=read_project(out)
         self.assertTrue(state['date_info']['approximate'])
@@ -116,14 +116,14 @@ class SolverTests(unittest.TestCase):
                         writer.write(' line\n');writer.flush();state['finished']=True
                     return 0
             return Process()
-        with patch('astap_solver.subprocess.Popen',side_effect=process):
+        with patch('astro_platesolve.astap.subprocess.Popen',side_effect=process):
             solve_project(self.options,lambda message:events.append((message,state['finished'])))
         self.assertIn(('ASTAP | Detecting stars',False),events)
         self.assertIn(('ASTAP | Partial line',True),events)
         log=Path(self.options.diagnostic_log)
         self.assertTrue(log.exists());self.assertIn('Detecting stars',log.read_text())
         self.options.output=str(self.root/'failed-project')
-        with patch('astap_solver.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:1,returncode=1)):
+        with patch('astro_platesolve.astap.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:1,returncode=1)):
             with self.assertRaisesRegex(RuntimeError,'Diagnostic log:'): solve_project(self.options)
         self.assertTrue(Path(self.options.diagnostic_log).exists())
 
@@ -150,7 +150,7 @@ class SolverTests(unittest.TestCase):
                     return None if self.polls==1 else 0
             return Process()
         events=[];clock=iter(range(0,1000,11))
-        with patch('astap_solver.subprocess.Popen',side_effect=process),patch('astap_solver.time.monotonic',side_effect=lambda:next(clock)):
+        with patch('astro_platesolve.astap.subprocess.Popen',side_effect=process),patch('astro_platesolve.astap.time.monotonic',side_effect=lambda:next(clock)):
             solve_project(self.options,events.append)
         self.assertTrue(any('ASTAP still working' in line for line in events))
 
@@ -170,7 +170,7 @@ class SolverTests(unittest.TestCase):
 
     def test_compact_candidate_is_refined_against_original_pixels(self):
         result=[(None,'no match'),(self.solution.copy(),''),(self.solution.copy(),'')]
-        with patch('astap_solver.run_attempt',side_effect=result) as run,patch('astap_solver.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)):
+        with patch('astro_platesolve.astap.run_attempt',side_effect=result) as run,patch('astro_platesolve.astap.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)):
             out=solve_project(self.options)
         self.assertEqual([call.args[5] for call in run.call_args_list],[2000,500,5000])
         self.assertEqual(read_project(out)['astrometry']['strategy'],'compact-peaks+original-refinement')
@@ -178,14 +178,14 @@ class SolverTests(unittest.TestCase):
 
     def test_unconfirmed_compact_candidate_never_creates_project(self):
         result=[(None,'no match'),(self.solution.copy(),''),(None,'no confirmation'),(None,'no confirmation'),(None,'no confirmation'),(None,'no match')]
-        with patch('astap_solver.run_attempt',side_effect=result),patch('astap_solver.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)):
+        with patch('astro_platesolve.astap.run_attempt',side_effect=result),patch('astro_platesolve.astap.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)):
             with self.assertRaisesRegex(RuntimeError,'could not solve'): solve_project(self.options)
         self.assertFalse(Path(self.options.output).exists())
 
     def test_bad_refinement_is_rejected_and_smaller_sample_is_used(self):
         bad=self.solution.copy();bad['CRVAL1']=bad['CRVAL1']+1
         result=[(self.solution.copy(),''),(bad,''),(self.solution.copy(),'')]
-        with patch('astap_solver.run_attempt',side_effect=result):
+        with patch('astro_platesolve.astap.run_attempt',side_effect=result):
             out=solve_project(self.options)
         state=read_project(out)['astrometry']
         self.assertEqual(state['maximum_stars'],2000)
@@ -195,7 +195,7 @@ class SolverTests(unittest.TestCase):
     def test_named_target_starts_local_and_scale_bracket_confirms_candidate(self):
         self.options.target='03 47 13 +24 07 11'
         result=[(self.solution.copy(),''),(None,'no match'),(None,'no match'),(self.solution.copy(),'')]
-        with patch('astap_solver.run_attempt',side_effect=result) as run:
+        with patch('astro_platesolve.astap.run_attempt',side_effect=result) as run:
             out=solve_project(self.options)
         self.assertEqual(run.call_args_list[0].args[2].radius,5)
         self.assertEqual([call.args[5] for call in run.call_args_list],[2000,5000,2000,3000])
@@ -235,7 +235,7 @@ class SolverTests(unittest.TestCase):
         def attempt(*args):
             self.assertEqual(fits.getheader(args[1])['EQUINOX'],2000)
             return self.solution.copy(),''
-        with patch('astap_solver.FileImageSource.snapshot',return_value=(pixels,header)),patch('astap_solver.run_attempt',side_effect=attempt) as run:
+        with patch('astap_solver.FileImageSource.snapshot',return_value=(pixels,header)),patch('astro_platesolve.astap.run_attempt',side_effect=attempt) as run:
             out=solve_project(self.options)
         first=run.call_args_list[0].args
         self.assertEqual(first[5],500);self.assertEqual(first[2].radius,30)
@@ -245,7 +245,7 @@ class SolverTests(unittest.TestCase):
         self.assertEqual(self.image.read_bytes(),self.original)
 
     def test_insufficient_detection_skips_redundant_original_searches(self):
-        with patch('astap_solver.run_attempt',side_effect=[(None,'Not enough usable stars detected.'),(None,'no matching pattern')]) as run,patch('astap_solver.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)) as compact:
+        with patch('astro_platesolve.astap.run_attempt',side_effect=[(None,'Not enough usable stars detected.'),(None,'no matching pattern')]) as run,patch('astro_platesolve.astap.compact_star_proxy',return_value=np.ones((12,16),dtype=np.float32)) as compact:
             with self.assertRaisesRegex(RuntimeError,'could not solve'):solve_project(self.options)
         self.assertEqual(run.call_count,2);compact.assert_called_once()
         self.assertFalse(Path(self.options.output).exists())
@@ -259,7 +259,7 @@ class SolverTests(unittest.TestCase):
             self.assertFalse(proxy.with_suffix('.ini').exists())
             self.assertFalse(proxy.with_suffix('.wcs').exists())
             return SimpleNamespace(poll=lambda:0,returncode=0)
-        with patch('astap_solver.subprocess.Popen',side_effect=no_result):
+        with patch('astro_platesolve.astap.subprocess.Popen',side_effect=no_result):
             solved,_=run_attempt('/bin/sh',proxy,self.options,0,0,500,self.root/'attempt.log',lambda message:None,threading.Event(),10)
         self.assertIsNone(solved)
 
@@ -272,21 +272,21 @@ class SolverTests(unittest.TestCase):
             proxy.with_suffix('.ini').write_text('pltsolvd="t"\nwarning="inexact scale"\n')
             proxy.with_suffix('.wcs').write_text(self.solution.tostring(padding=False))
             return SimpleNamespace(poll=lambda:0,returncode=0)
-        with patch('astap_solver.subprocess.Popen',side_effect=process):
+        with patch('astro_platesolve.astap.subprocess.Popen',side_effect=process):
             result,_=run_attempt('/bin/sh',proxy,options,None,None,500,self.root/'guided.log',lambda m:None,threading.Event(),10)
         self.assertEqual(result['WARNING'],'inexact scale')
 
     def test_compact_proxy_cancels_before_expensive_filters(self):
         from astap_solver import compact_star_proxy
         cancel=threading.Event();cancel.set()
-        with patch('astap_solver.ndimage.gaussian_filter') as smooth:
+        with patch('astro_platesolve.astap.ndimage.gaussian_filter') as smooth:
             with self.assertRaises(InterruptedError):compact_star_proxy(np.zeros((128,128)),cancel)
             smooth.assert_not_called()
 
     def test_crashed_astap_retains_diagnostic_path(self):
         from astap_solver import run_attempt
         proxy=self.root/'crash.fits';log=self.root/'crash.log'
-        with patch('astap_solver.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:-6,returncode=-6)):
+        with patch('astro_platesolve.astap.subprocess.Popen',return_value=SimpleNamespace(poll=lambda:-6,returncode=-6)):
             with self.assertRaisesRegex(RuntimeError,'Diagnostic log:'):
                 run_attempt('/bin/sh',proxy,self.options,0,0,500,log,lambda m:None,threading.Event(),10)
         self.assertTrue(log.exists())
@@ -299,7 +299,7 @@ class SolverTests(unittest.TestCase):
         bad['A_ORDER']=2;bad['B_ORDER']=2;bad['A_2_0']=1
         self.assertFalse(refinement_consistent(self.solution,bad,16,12)[0])
         inexact=self.solution.copy();inexact['WARNING']='Warning inexact scale!'
-        with patch('astap_solver.run_attempt',side_effect=[(self.solution.copy(),''),(inexact,''),(self.solution.copy(),'')]):
+        with patch('astro_platesolve.astap.run_attempt',side_effect=[(self.solution.copy(),''),(inexact,''),(self.solution.copy(),'')]):
             state=read_project(solve_project(self.options))['astrometry']
         self.assertFalse(state['attempts'][1]['accepted'])
         self.assertTrue(state['attempts'][2]['accepted'])

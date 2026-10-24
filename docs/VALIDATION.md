@@ -59,3 +59,14 @@ Fresh 5,000-candidate core runs accepted 3,945 M8 movers in 41.30 s and 3,860 Po
 The [interface audit](INTERFACE_AUDIT.md) records 0.11.x layout/recovery findings and the 0.15.0 simplification. Offscreen checks covered new/unsolved/solved/partial/prepared/busy/failed states, stable Advanced geometry, expanding paths, progress/diagnostics, cancellation and export-link recovery. Screenshots used an 800×800 available screen; they do not establish native file-dialog or display-scaling parity.
 
 Real star-removal engine checks processed an image crop through both installed engines. A test or desktop check does not establish every live Siril integration state; exercise that boundary when changing it.
+
+## Shared solver extraction (0.18.0, 2026-10-24)
+
+The complete 133-test SPACER suite passed after moving ASTAP implementation to
+`astro-platesolve`. Solver tests still cover original preservation, project reuse,
+cancellation/timeout, logs/UTF-8/heartbeats, source metadata, recovery ordering and
+original-pixel refinement/rejection. No extraction/rendering behavior was changed.
+Shared-library API/Skyshot schema tests and Siril/alignment adapter tests were run
+separately. M39 was processed through shared ASTAP and native registration with the
+same crop/residual measurements as before extraction. Skyshot lacks an installed
+runtime/index here: adapter simulation is not an accuracy or speed benchmark.

@@ -2,6 +2,14 @@
 
 Release history for SPACER. Current setup and usage are in [README.md](README.md); repository working rules are in [AGENTS.md](AGENTS.md).
 
+## 0.18.0 — 2026-10-24
+
+- Import optional plate solving from the shared `astro-platesolve` library in `siril_scripts/shared/astro-platesolve` instead of maintaining another ASTAP implementation.
+- Share backend selection, solver recovery, diagnostics and cancellation with Siril Plate Solve and Align Stacks. Keep source snapshots, dates, project commits and saved provenance in SPACER.
+- Preserve original-pixel confirmation and existing scale/parity/edge rejection screens in the shared ASTAP backend; no extraction/rendering or cache-schema changes.
+- Honor the central backend configuration before validating executable paths; record the actual backend/library provenance. Skyshot CLI adapter contracts are tested, but real Skyshot solving/speed is not yet validated.
+- Install the shared library in SPACER's environment before starting this version; editable installation can share one source checkout with Siril.
+
 ## 0.17.1 — 2026-10-22
 
 - Reorganize README around requirements, setup and the current workflow; remove duplicate release sections and stale version/behavior descriptions.

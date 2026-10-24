@@ -4,3 +4,4 @@ astropy
 Pillow
 tifffile
 PyQt6
+astro-platesolve>=0.1,<0.2

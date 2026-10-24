@@ -15,6 +15,7 @@ from siril_pipeline import normalized_pixels, parse_header, has_solution, find_t
 from astropy.time import Time
 from image_source import FileImageSource
 from astap_solver import solve_project, find_astap, resolve_astap
+from astro_platesolve import SolveOptions, validate_backend
 from task_progress import Diagnostic
 from density import DEFAULT_MAX_STARS, MAX_MOVING_STARS
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
@@ -479,7 +480,7 @@ class FlythroughWindow(QWidget):
     def solve_image(self):
         try:
             if not self.file_source: raise ValueError('Open an image first.')
-            resolve_astap(self.astap.text())
+            validate_backend(SolveOptions(executable=self.astap.text()))
             if not self.output.text().strip(): raise ValueError('Choose a new project folder.')
             info=self.selected_date_info()
             if self.epoch.text().strip() and not info: raise ValueError('Enter a valid capture year or date.')

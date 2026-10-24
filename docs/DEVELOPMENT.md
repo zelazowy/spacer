@@ -31,7 +31,7 @@ A unified headless CLI, packaged installers and website remain future work. `fly
 | `photo_date.py` | Matching-date inference and provenance |
 | `preferences.py` | Local atomic navigation settings |
 | `task_progress.py` | Structured per-stage counts and diagnostic events |
-| `astap_solver.py` | Cancellable solver attempts, original-pixel confirmation and logs |
+| `astap_solver.py` | Thin shared-solver adapter: snapshots, dates, project commits and provenance |
 | `viewer.html` | Self-contained interactive scene/inspection template |
 | `version.py` | Shared public version and UTC provenance timestamps |
 
@@ -112,7 +112,17 @@ Prefer capture metadata; file dates are labelled approximations. Never infer cap
 
 ## ASTAP implementation
 
-The optional solver works on same-size private mono proxies scaled to 0–65535, following relevant strategies from the separate Siril helper. Never import that helper or reproduce its source-update/mirror workflow.
+Solver engine implementations now live in `siril_scripts/shared/astro-platesolve`,
+installed as the `astro_platesolve` package. Edit that shared library for commands,
+recovery, validation or another engine; do not copy its code into SPACER. Keep
+SPACER's image/date/project boundary here. It sets `confirm_original=True`; retain
+the contracts below in the shared backend. The central solver configuration can
+select Skyshot without changing this adapter. Its schema-v1 adapter refuses local
+warp grids that FITS WCS cannot represent; real Skyshot runtime validation remains
+outstanding. Install this source dependency in each runtime, preferably editable
+against the same checkout during development.
+
+The optional solver works on same-size private mono proxies scaled to 0–65535, using the same shared engine implementation as the Siril utilities. Never import that helper or reproduce its source-update/mirror workflow.
 
 With usable pointing/optics hints, prepend header-guided 500/2,000-star ordinary attempts and a compact attempt. Explicit target/FOV wins; omit command overrides only when delegating those hints to ASTAP. Optics without pointing must not force a local 30° search. Other recovery uses 2,000-star ordinary, reusable background-subtracted compact peaks and a 500-star original fallback. Skip redundant ordinary attempts after insufficient detection.
 
