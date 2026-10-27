@@ -2,6 +2,14 @@
 
 Release history for SPACER. Current setup and usage are in [README.md](README.md); repository working rules are in [AGENTS.md](AGENTS.md).
 
+## 0.19.0 — 2026-10-27
+
+- Add a separate native lightweight preview window to both launchers, available from saved calculations before rendering a video.
+- Downsample preview textures to 1200 px and pack star sprites into one atlas; preserve all selected stars, float coordinates, distances and full-resolution exports.
+- Load preview assets in a cancellable worker; add play/pause, scrubbing, camera/target motion controls, star boundaries and distance inspection.
+- Keep preview edits temporary, with an explicit Use these settings action for the main controls. Retain full-resolution exported HTML access.
+- Guard project switching, invalid target distances and loader/playback shutdown. No new runtime dependencies, extraction changes or cache migrations.
+
 ## 0.18.0 — 2026-10-24
 
 - Import optional plate solving from the shared `astro-platesolve` library in `siril_scripts/shared/astro-platesolve` instead of maintaining another ASTAP implementation.

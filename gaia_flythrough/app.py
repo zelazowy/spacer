@@ -88,6 +88,7 @@ class FlythroughWindow(QWidget):
         self.target_worker=None;self.target_info=None
         self.prepared_star_limit=None;self.prepared_star_count=None;self.prepared_approximate=None
         self.render_succeeded=False
+        self.preview_window=None
         self.setWindowTitle(f'SPACER — v{VERSION}')
         self.resize(680,560)
         self.setMinimumWidth(600)
@@ -269,7 +270,7 @@ class FlythroughWindow(QWidget):
         self.render_counter=QLabel();self.render_counter.setWordWrap(True);self.render_counter.hide();activity_layout.addWidget(self.render_counter)
         self.buttons=QHBoxLayout();layout.addLayout(self.buttons)
         self.preview=QPushButton('Open preview');self.preview.setEnabled(False)
-        self.preview.clicked.connect(lambda: self.open_result('preview.html'));self.buttons.addWidget(self.preview)
+        self.preview.clicked.connect(self.open_preview);self.buttons.addWidget(self.preview)
         self.video=QPushButton('Open video');self.video.setEnabled(False)
         self.video.clicked.connect(lambda: self.open_result('flight.mp4'));self.buttons.addWidget(self.video)
         self.buttons.addStretch()
@@ -585,6 +586,7 @@ class FlythroughWindow(QWidget):
         if calculation_error:
             self.project_hint.setText('Saved image · star calculations need rebuilding.')
             self.status.setText(calculation_error);self.start.setEnabled(False)
+        self.preview.setEnabled(ready or bool(self.result and self.result_stem and (self.result/(self.result_stem+'.html')).is_file()))
         self.fit_main_window()
 
     def update_calculation_hint(self,*_):
@@ -889,7 +891,9 @@ class FlythroughWindow(QWidget):
     def restore_export_links(self,folder):
         self.result_stem=read_project(folder).get('last_render')
         self.result=folder if self.result_stem else None
-        self.preview.setEnabled(bool(self.result and (folder/(self.result_stem+'.html')).exists()))
+        try: prepared_preview=(calculation_folder(folder)/'scene_iterative.json').is_file()
+        except ValueError:prepared_preview=False
+        self.preview.setEnabled(prepared_preview or bool(self.result and (folder/(self.result_stem+'.html')).exists()))
         self.video.setEnabled(bool(self.result and (folder/(self.result_stem+'.mp4')).exists()))
     def failed(self,message):
         if self.worker and self.worker.cancel.is_set():
@@ -912,7 +916,49 @@ class FlythroughWindow(QWidget):
         if self.result:
             suffix='.html' if name=='preview.html' else '.mp4'
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.result/(self.result_stem+suffix))))
+    def open_preview(self):
+        try:
+            from preview import PreviewWindow
+            folder=Path(self.output.text()).expanduser().resolve()
+            try:path=calculation_folder(folder)/'scene_iterative.json'
+            except ValueError:
+                if self.result and self.result_stem and (self.result/(self.result_stem+'.html')).is_file():
+                    self.open_result('preview.html');return
+                raise
+            if not path.is_file():
+                if self.result and self.result_stem and (self.result/(self.result_stem+'.html')).is_file():
+                    self.open_result('preview.html');return
+                raise ValueError('Prepare or recalculate the saved star field before opening a preview.')
+            if self.preview_window and self.preview_window.isVisible():
+                if self.preview_window.scene_path==path and self.preview_window.limit==self.star_limit.value():
+                    self.preview_window.raise_();self.preview_window.activateWindow();return
+                self.preview_window.close()
+            settings=dict(seconds=self.seconds.value(),zoom=self.zoom.value(),zoom_mode=self.zoom_mode.currentData(),
+                travel_pc=self.travel_pc.value(),target_distance_pc=self.target_distance_pc.value())
+            export_path=self.result/(self.result_stem+'.html') if self.result and self.result_stem else None
+            callback=(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(export_path)))) if export_path and export_path.is_file() else None
+            window=PreviewWindow(path,settings,self.star_limit.value(),self,callback)
+            window.setWindowTitle(f'SPACER preview — {folder.name} — v{VERSION}')
+            window.settings_chosen.connect(lambda values:self.apply_preview_settings(values,folder))
+            window.destroyed.connect(lambda _=None,old=window:self.clear_preview_window(old))
+            self.preview_window=window;window.show()
+        except Exception as exc:self.show_problem('Cannot open preview',str(exc))
+    def clear_preview_window(self,window):
+        if self.preview_window is window:self.preview_window=None
+    def apply_preview_settings(self,values,folder):
+        if Path(self.output.text()).expanduser().resolve()!=folder or (self.worker and self.worker.isRunning()):
+            self.show_problem('Preview belongs to another state','Return to this preview’s project and wait for processing to finish before applying settings.');return
+        self.seconds.setValue(values['seconds']);self.zoom.setValue(values['zoom'])
+        self.travel_pc.setValue(values['travel_pc']);self.target_distance_pc.setValue(values['target_distance_pc'])
+        self.zoom_mode.setCurrentIndex(self.zoom_mode.findData(values['zoom_mode']));self.refresh_motion_ui()
     def closeEvent(self,event):
+        previews=[window for window in self.findChildren(QDialog) if hasattr(window,'loader') and window.loader.isRunning()]
+        if previews:
+            for window in previews:
+                window.close();window.loader.finished.connect(self.close)
+            event.ignore();return
+        for window in self.findChildren(QDialog):
+            if hasattr(window,'timer'):window.timer.stop()
         if self.target_worker and self.target_worker.isRunning():
             self.show_problem('Target lookup running','Wait for the catalogue lookup to finish (each network request has a 30-second timeout).');event.ignore();return
         if self.worker and self.worker.isRunning():

@@ -6,7 +6,7 @@
 
 SPACER turns a finished astrophotograph into a flythrough, using catalogue distances to move stars with depth-dependent parallax. Run it as a standalone Python desktop app or from Siril.
 
-Current version: **0.18.0**. Star separation is experimental, especially around bright stars with overlapping halos and diffraction spikes.
+Current version: **0.19.0**. Star separation is experimental, especially around bright stars with overlapping halos and diffraction spikes.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ On Windows, activate with `.venv\Scripts\activate` instead.
 2. If needed, choose **Solve sky position**. An optional object name can help ASTAP locate the field.
 3. Set **Duration** and **Motion**. Defaults are **60 seconds**, **1.3× final zoom**, **24 fps**, **80 pc travel**, and **1.5-second easing** at each end.
 4. Open **Advanced settings** to check the star-removal engine, observation date and project folder. Enable **Include approximate distances** there if you want broader catalogue coverage.
-5. Choose **Prepare and render**. Use **Open preview** for an interactive HTML view or **Open video** for the MP4.
+5. Choose **Prepare and render**. Use **Open preview** for a lightweight interactive window or **Open video** for the MP4.
 
 Original images are left unchanged. Outputs go into `flythrough/<image-name>/` beside the source unless you choose another project folder.
 
@@ -59,6 +59,8 @@ The Siril launcher requires an existing plate solution and suggests Siril's solv
 **Camera zoom** adds the chosen enlargement to stellar parallax. **Travel toward a target** derives background enlargement from target distance and travel; use **Choose target…** for a short catalogue list or enter a distance under Advanced → Motion details. Target selection does not re-centre the camera.
 
 Use **Open project…** to return to earlier work, even after switching images. Change duration or zoom and choose **Render flight** to reuse saved layers and calculations. Each export gets a new filename; previous videos remain available.
+
+**Open preview** opens a separate native window once star calculations exist, even before video export. It loads a downsampled 1200 px scene with play/pause, scrubbing, motion controls and star inspection. Preview edits are temporary; **Use these settings** copies them to the main window for your next render. **Open exported HTML** retains access to the latest full-resolution HTML export.
 
 To change the moving-star limit, enable approximate distances, or apply a newer separation algorithm, use **Advanced → Star calculations → Recalculate stars**, then render. Recalculation reuses saved layers and available catalogue caches, preserves earlier calculation revisions, and downloads supplementary catalogues only when needed.
 

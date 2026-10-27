@@ -99,7 +99,17 @@ Standalone startup remembers the last successful image/project, unless explicit 
 | `flythrough_v<version>_iterative_….html/.mp4/.json` | Interactive preview, video and render settings/provenance |
 | `star-removal.log`, working FITS/TIFF files | External-engine diagnostics and working layers |
 
-Videos are H.264, up to 1920 px wide. HTML previews retain the full-resolution scene and need no local server. **Open preview** and **Open video** open the latest completed export. In the preview, enable **Show extracted star boundaries** and click a mover to inspect its catalogue ID, distance source/interval and actual patch.
+Videos are H.264, up to 1920 px wide. HTML previews retain the full-resolution scene and need no local server. **Open video** opens the latest completed MP4. **Open preview** opens the native preview described below. Use **Open exported HTML** inside that window to view the latest completed full-resolution HTML export, including its saved parameters and pixel-patch inspection.
+
+## Lightweight preview window
+
+After preparing or recalculating stars, click **Open preview**. It opens a separate native window in both Siril and standalone SPACER, without rendering a video, querying catalogues or running star removal. The preview uses the active saved calculation and the main window's current settings, which can differ from the last exported flight.
+
+The background and star textures are downsampled to at most 1200 px for quick loading; star positions, distances and perspective remain based on the saved scene. Textures share one atlas, and preparation runs in a cancellable background worker. No browser, local web server or extra WebEngine package is needed. Video/HTML exports retain their existing resolution and behavior.
+
+Use **Play/Pause** or the timeline to inspect movement. Switch **Motion**, adjust **Final zoom**, **Travel**, **Target distance** and **Duration**, or enable **Show extracted star boundaries**. Clicking a mover shows its catalogue ID and distance provenance. These preview changes do not edit saved scenes or project settings. **Use these settings** copies the values into the main controls; **Render flight** then creates a new export as usual. Applying settings is blocked if the main window has switched projects or is processing.
+
+Target-distance mode needs a target distance greater than travel; it does not invent a missing distance. The star maximum follows the main window's current limit. Legacy projects with only an exported HTML preview can still open that file directly. Closing while loading cancels preparation safely, and closing playback stops its timer.
 
 ## Progress and troubleshooting
 

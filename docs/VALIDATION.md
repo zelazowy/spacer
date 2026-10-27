@@ -4,6 +4,12 @@
 
 These are recorded local observations, not performance guarantees or proof of every catalogue distance and star extraction. Large images and generated artifacts are excluded from Git. Automated tests use synthetic/temporary fixtures; real-image work should use a separate validation folder and preserve the user's source/project.
 
+## Native interactive preview — 0.19.0
+
+The suite passed **141 tests**, including atlas downsampling with unchanged coordinates/provenance, non-destructive moving-star caps, both projection modes and camera-plane crossing, fractional movement, picking, settings isolation, active-revision selection, invalid target distances, scrubbing/playback and cancellation during window/main-window closing. No WebEngine/server dependency was added.
+
+A real B150 field (4084×2717, 13,259 movers) loaded to a 1200×798 background plus packed atlas in about **1.12 s**. Five sampled native redraws averaged about **19.2 ms** on the local offscreen Qt runtime. First/middle/final target-mode frames and a camera-zoom frame were inspected. These measurements are not runtime guarantees; native platform styling and live Siril integration may differ. Original source, project and active-scene hashes stayed unchanged. Extraction/rendering algorithms and existing cache compatibility were not changed.
+
 ## Latest distance-coverage check — 0.17.0
 
 The complete suite passed **133 tests**, covering selection/provenance, proper-motion epoch conversion, catalogue duplicates/ambiguity and caches, actual synthetic extraction, immutable revision retention, render coverage guards, moving-limit consistency and Qt state/layout. Preview JavaScript passed `node --check`.

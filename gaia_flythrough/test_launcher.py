@@ -553,6 +553,59 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue(w.preview.isEnabled());self.assertTrue(w.video.isEnabled())
             self.assertEqual(w.result_stem,'previous');w.worker=None
 
+    def test_native_preview_works_before_export_and_applies_only_on_request(self):
+        import numpy as np
+        from flythrough import png_data
+        from PyQt6.QtCore import QEventLoop,QTimer
+        saved=self.folder/'preview';saved.mkdir()
+        scene=dict(width=60,height=40,stars=[],background=png_data(np.zeros((40,60,3))),prepared_with_version='0.17.0')
+        active=saved/'calculations'/'v0.17.0_001';active.mkdir(parents=True)
+        path=active/'scene_iterative.json';path.write_text(json.dumps(scene));before=path.read_bytes()
+        project=saved/'project.json';project.write_text(json.dumps(dict(stage='ready',seconds=12,zoom=30,calculation_path='calculations/v0.17.0_001')));original_project=project.read_bytes()
+        w=self.window;w.use_prepared(saved)
+        self.assertTrue(w.preview.isEnabled());self.assertFalse(w.video.isEnabled())
+        with patch.object(w,'launch') as launch:
+            w.preview.click();preview=w.preview_window
+            loop=QEventLoop();preview.loader.finished.connect(loop.quit);QTimer.singleShot(3000,loop.quit)
+            if preview.loader.isRunning():loop.exec()
+            self.app.processEvents();self.assertTrue(preview.finished_loading);launch.assert_not_called()
+            self.assertEqual(preview.scene_path,path.resolve())
+            self.assertIn('preview',preview.windowTitle());self.assertFalse(preview.export.isEnabled())
+            preview.zoom.setValue(2);preview.seconds.setValue(20)
+            self.assertEqual(w.zoom.value(),1.3);self.assertEqual(w.seconds.value(),12)
+            preview.apply.click()
+            self.assertEqual(w.zoom.value(),2);self.assertEqual(w.seconds.value(),20)
+            preview.close();self.app.processEvents()
+        self.assertEqual(path.read_bytes(),before);self.assertEqual(project.read_bytes(),original_project)
+
+    def test_stale_or_busy_preview_cannot_apply_to_another_project(self):
+        w=self.window;folder=Path(w.output.text()).resolve()
+        values=dict(seconds=20,zoom=2,travel_pc=80,target_distance_pc=300,zoom_mode='target_distance')
+        before=w.seconds.value()
+        with patch.object(w,'show_problem') as problem:
+            w.apply_preview_settings(values,folder/'other');problem.assert_called_once()
+            self.assertEqual(w.seconds.value(),before)
+        w.worker=SimpleNamespace(isRunning=lambda:True)
+        with patch.object(w,'show_problem') as problem:
+            w.apply_preview_settings(values,folder);problem.assert_called_once()
+            self.assertEqual(w.seconds.value(),before)
+        w.worker=None
+
+    def test_main_window_close_waits_for_preview_loader_cancellation(self):
+        from PyQt6.QtCore import QEventLoop,QTimer
+        saved=self.folder/'closing-preview';saved.mkdir()
+        (saved/'scene_iterative.json').write_text('{}')
+        (saved/'project.json').write_text(json.dumps(dict(stage='ready')))
+        w=self.window;w.use_prepared(saved);entered=threading.Event()
+        def until_cancel(path,limit,cancel):
+            entered.set();cancel.wait(3);raise InterruptedError()
+        with patch('preview.prepare_preview',side_effect=until_cancel):
+            w.open_preview();preview=w.preview_window;self.assertTrue(entered.wait(1))
+            loop=QEventLoop();preview.loader.finished.connect(loop.quit);QTimer.singleShot(4000,loop.quit)
+            w.close()
+            if preview.loader.isRunning():loop.exec()
+            self.app.processEvents();self.assertFalse(w.isVisible())
+
     def test_details_stays_on_screen_with_scroll_fallback(self):
         w=self.window
         w.details_toggle.setChecked(True);self.app.processEvents()

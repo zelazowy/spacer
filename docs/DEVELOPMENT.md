@@ -32,6 +32,7 @@ A unified headless CLI, packaged installers and website remain future work. `fly
 | `preferences.py` | Local atomic navigation settings |
 | `task_progress.py` | Structured per-stage counts and diagnostic events |
 | `astap_solver.py` | Thin shared-solver adapter: snapshots, dates, project commits and provenance |
+| `preview.py` | Read-only asynchronous downsampling/texture atlas, native Qt preview and temporary motion controls |
 | `viewer.html` | Self-contained interactive scene/inspection template |
 | `version.py` | Shared public version and UTC provenance timestamps |
 
@@ -141,3 +142,12 @@ Use `StageProgress` structured `(label, done, total, elapsed)` events, throttled
 Details always contains full captured diagnostics, including while collapsed; ignore legacy verbose preferences. Preserve tracebacks in Details and concise stage/error messages. Keep status/counter heights reserved and hidden progress/cancel size policies. Finalization remains below 100% until FFmpeg and project recording succeed.
 
 Standalone explicit launch inputs override remembered navigation. Missing/corrupt preferences or unwritable settings locations must not block processing. Pickers start at current locations or nearest existing parents. Remember partial/successful projects; keep preferences local and ignored. Failed/cancelled runs restore earlier export links and release controls only after workers stop.
+
+
+## Native lightweight preview
+
+`Open preview` routes prepared fields to `PreviewWindow` in preview.py. It loads only the active scene_iterative.json, applies a non-destructive current moving-star cap and builds downsampled assets in a cancellable QThread. Use QImage in that worker, not GUI-only QPixmap. Keep original float scene coordinates and source distance metadata; a 1200 px background and packed atlas affect presentation only. Native QPainter uses additive star compositing and the same motion_scales/ease_progress functions as export. No WebEngine dependency or server is required.
+
+Preview controls are local. `Use these settings` explicitly copies scales/parsecs/integer duration to the main window; preserve the main zoom-scale vs project-percent boundary. Reject apply from another project or while a processing worker is running. Keep legacy/full-resolution exported HTML accessible. Do not overwrite scenes/project files or run preparation/FFmpeg/catalogue queries to preview a saved field. Preview availability is independent of video existence.
+
+Cancellation/close must stop playback, wait for loader completion before destruction, and safely release the window reference. The main window also cancels/waits for loading previews when closing. Test those lifecycle paths as well as projection/camera crossing, settings application, cap restoration, inspection and invalid target distances. Keep actual export extraction, renderer and cache schemas unchanged.
