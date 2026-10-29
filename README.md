@@ -6,7 +6,7 @@
 
 SPACER turns a finished astrophotograph into a flythrough, using catalogue distances to move stars with depth-dependent parallax. Run it as a standalone Python desktop app or from Siril.
 
-Current version: **1.0.0**. Star separation is experimental, especially around bright stars with overlapping halos and diffraction spikes.
+Current version: **1.0.1**. Star separation is experimental, especially around bright stars with overlapping halos and diffraction spikes.
 
 ## Requirements
 
@@ -57,7 +57,7 @@ The Siril launcher requires an existing plate solution and suggests Siril's solv
 
 ## Motion and saved projects
 
-**Camera zoom** adds the chosen enlargement to stellar parallax. **Travel toward a target** derives background enlargement from target distance and travel; use **Choose target…** for a short catalogue list or enter a distance under Preview flight → Advanced motion. Target selection does not re-centre the camera.
+**Camera zoom** adds the chosen enlargement to stellar parallax. **Travel toward a target** derives background enlargement from target distance and travel; use **Choose target…** for a short catalogue list or enter a distance under Preview flight → Target distance. Target selection does not re-centre the camera.
 
 Use **Open project…** to return to earlier work, even after switching images. Change duration or zoom and choose **Save video** in Export to reuse saved layers and calculations. Each export gets a new filename; previous videos remain available.
 

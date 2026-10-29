@@ -30,7 +30,7 @@ The interface is a dark, resizable workspace. On first use, Tool setup opens wit
 | --- | --- |
 | Prepare image | Image source, stretch, observation date, project folder, optional solving; save image/starless layers |
 | Calculate stars | Approximate distances, advanced moving-star maximum, Calculate/Recalculate stars |
-| Preview flight | Integrated playback, motion, zoom, travel and duration; manual target distance in Advanced motion |
+| Preview flight | Integrated playback, motion, zoom, travel and duration; target-distance entry below the target chooser |
 | Export | Resolution, frame rate, Save video, latest video and exported HTML |
 
 Tool setup has separate Star removal, Plate solving and Video export categories, with expanding path fields and an installation check. Checks validate executable availability (and shared solver configuration for ASTAP); the engines validate their models/licenses during preparation, and FFmpeg validates encoding during export. No model/license activation is claimed by the path check.
@@ -61,7 +61,7 @@ Defaults are **60 s**, **1.3×**, **24 fps**, **about 261 ly travel** and **1.5 
 
 **Choose target…** uses an optional online SIMBAD lookup for a shortlist of familiar nebulae, clusters and galaxies within the solved footprint. It prefers Messier, IC and NGC names, followed by common nebula/cluster catalogues. Each object appears once, using an approximate median of published distances rounded to two significant figures. Original measurements and references remain in provenance. This summary is an animation input, not a combined scientific measurement.
 
-The list is limited to 100 main candidates and a 6° lookup radius; it is not an exhaustive object detector. Unsupported/unlisted objects or missing distances can use manual entry under Preview flight → Advanced motion. Selection does not move the camera's optical axis onto the chosen object. Switching images clears the previous target; reopening a project restores its saved selection.
+The list is limited to 100 main candidates and a 6° lookup radius; it is not an exhaustive object detector. Unsupported/unlisted objects or missing distances can use manual entry under Preview flight → Target distance. Selection does not move the camera's optical axis onto the chosen object. Switching images clears the previous target; reopening a project restores its saved selection.
 
 ## More moving stars
 
@@ -112,7 +112,7 @@ After calculating stars, use **Preview flight**. No video rendering, catalogue q
 
 Background/star textures are downsampled to at most 1200 px and packed into one atlas by a cancellable background worker. Coordinates, distances and perspective remain based on the saved scene. There is no browser, web server or WebEngine dependency. The shared image canvas, playback bar and reserved status/action areas do not change size when controls expand or you switch image-related steps. Tool setup is deliberately image-free.
 
-Use **Play/Pause** or scrub the timeline. Set Motion, Final zoom, Travel distance and Duration. Target-distance mode uses **Choose target…**, or a manual distance under **Advanced motion**; the target must exceed travel. Clicking a moving star shows its catalogue ID, distance/interval in light-years and provenance. Show star boundaries to inspect extracted patches. Controls update the next flight without modifying saved scenes; settings are saved when processing/exporting, not on every preview adjustment.
+Use **Play/Pause** or scrub the timeline. Set Motion, Final zoom, Travel distance and Duration. Target-distance mode uses **Choose target…**, or the **Target distance** field below the chooser; the target must exceed travel. Clicking a moving star shows its catalogue ID, distance/interval in light-years and provenance. Show star boundaries to inspect extracted patches. Controls update the next flight without modifying saved scenes; settings are saved when processing/exporting, not on every preview adjustment.
 
 Project switches cancel obsolete preview loads and discard stale results. Closing cancels loaders before destroying the window; animation stops when leaving Preview or processing begins.
 ## Progress and troubleshooting

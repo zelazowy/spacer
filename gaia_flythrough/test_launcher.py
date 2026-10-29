@@ -64,9 +64,12 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse(w.zoom.isVisible());self.assertTrue(w.target_row.isVisible())
         w.target_distance_pc.setValue(400)
         self.assertIn('ly',w.target_summary.text());self.assertIn('1.25',w.perspective_note.text())
-        self.assertFalse(w.target_distance_pc.isVisible())
+        self.assertTrue(w.target_distance_pc.isVisible())
+        self.assertFalse(w.motion_settings_toggle.isChecked())
         w.motion_settings_toggle.setChecked(True);self.app.processEvents()
         self.assertTrue(w.target_distance_pc.isVisible());self.assertEqual(w.target_distance_pc.value(),400)
+        w.zoom_mode.setCurrentIndex(0);self.app.processEvents()
+        self.assertFalse(w.target_distance_pc.isVisible());self.assertFalse(w.motion_settings.isVisible())
 
     def test_project_restore_and_switch_clear_previous_exports(self):
         w=self.window;saved=self.folder/'saved';saved.mkdir()

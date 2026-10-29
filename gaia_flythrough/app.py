@@ -138,6 +138,8 @@ class FlythroughWindow(QWidget):
         self.flight_form.setRowVisible(self.target_row,physical)
         self.flight_form.setRowVisible(self.perspective_note,physical)
         self.target_distance_pc.setEnabled(physical)
+        self.motion_settings_toggle.setVisible(physical)
+        self.motion_settings.setVisible(physical and self.motion_settings_toggle.isChecked())
         d,s=self.target_distance_pc.value(),self.travel_pc.value()
         from ui_units import distance_label as approximate_distance_label
         if d:
@@ -145,7 +147,7 @@ class FlythroughWindow(QWidget):
             self.target_summary.setText(f'{name} · {approximate_distance_label(d)}')
         else:self.target_summary.setText('No target selected')
         self.target_summary.setToolTip(self.target_origin.text())
-        self.perspective_note.setText('Choose a target, or enter its distance under Advanced motion.' if not d else (
+        self.perspective_note.setText('Choose a catalogue target or enter a distance.' if not d else (
             ('Very little background zoom at this distance.' if d/(d-s)<1.005 else f'Final enlargement: {d/(d-s):.3g}×') if d>s else 'Reduce travel distance; it must be less than the target distance.'))
         if hasattr(self,'start'):
             if hasattr(self,'workflow'):self.workflow.refresh()
@@ -209,7 +211,7 @@ class FlythroughWindow(QWidget):
         details=QLabel();details.setWordWrap(True);layout.addWidget(details)
         def update_details():
             row=choice.currentData()
-            details.setText('Approximate distance. Adjust it under Advanced motion.' if row['distance_pc'] else 'No distance available. Enter one under Advanced motion.')
+            details.setText('Approximate distance. You can adjust it in the Target distance field.' if row['distance_pc'] else 'No distance available. Enter one in the Target distance field.')
             details.setToolTip(row['distance_summary'])
         choice.currentIndexChanged.connect(update_details);update_details()
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)

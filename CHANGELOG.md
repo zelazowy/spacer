@@ -2,6 +2,11 @@
 
 Release history for SPACER. Current setup and usage are in [README.md](README.md); repository working rules are in [AGENTS.md](AGENTS.md).
 
+## 1.0.1 — 2026-10-29
+
+- Show Target distance directly below the target chooser in target-distance mode. Keep catalogue/manual distance provenance in a Distance source disclosure.
+- Update guidance and retain light-year entry, parsec storage and the fixed preview geometry.
+
 ## 1.0.0 — 2026-10-29
 
 - Replace the compact script interface with the approved dark-only, large resizable workspace in standalone and Siril launchers.
