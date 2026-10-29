@@ -6,7 +6,7 @@
 
 SPACER turns a finished astrophotograph into a flythrough, using catalogue distances to move stars with depth-dependent parallax. Run it as a standalone Python desktop app or from Siril.
 
-Current version: **1.0.1**. Star separation is experimental, especially around bright stars with overlapping halos and diffraction spikes.
+Current version: **1.0.2**. Star separation is experimental, especially around bright stars with overlapping halos and diffraction spikes.
 
 ## Requirements
 

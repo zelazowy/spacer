@@ -84,3 +84,9 @@ runtime/index here: adapter simulation is not an accuracy or speed benchmark.
 - Encoded an actual B150 **4.000 s**, **30 fps**, **1920×1278** MP4 with **120 frames** in an isolated validation folder. Inspected decoded first/middle/final frames. Original saved photo, project and active scene SHA256 hashes were unchanged; no catalogue/extraction/engine work was needed for export. This validates the new export options on a real field, not improved separation accuracy.
 - Desktop screenshots/tests used Qt's offscreen platform. A Cocoa launch was attempted, but native visual inspection through Computer Use was unavailable because permissions were not granted. Native macOS appearance/file-dialog parity and a live Siril connection were not verified in this release check. Existing standalone/Siril boundary tests and synthetic external-engine workflow checks pass; no proprietary engine/model/license was reactivated or bundled.
 - Scientific algorithms, cache markers and stored parsec units are unchanged. Existing bright-star separation limits still apply.
+
+## 1.0.2 numeric responsiveness — 2026-10-29
+
+- **151 tests passed**, including actual key entry of grouped million-light-year values, decimal-comma conversion, and absence of project refresh/redraw per typed digit.
+- Loaded the real B150 13,259-star scene in offscreen Qt: seven typed digits took about 1.5 ms in the synthetic QTest event run, with zero value-change events during typing and one committed event on Enter. This is an event-path regression check, not a native OS input-latency guarantee.
+- Committed changes schedule one coalesced preview sync after 120 ms; source data, projection and render settings remain unchanged.

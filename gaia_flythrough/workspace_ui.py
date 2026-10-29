@@ -136,8 +136,12 @@ class IntegratedPreview(QWidget):
         self.canvas.selected.connect(self.selection.setText)
         self.timer=QTimer(self);self.timer.setInterval(42);self.timer.timeout.connect(self.tick)
         self.position.valueChanged.connect(self.seek);self.position.sliderPressed.connect(self.pause);self.position.actionTriggered.connect(lambda _:self.pause())
+        self.sync_timer=QTimer(self);self.sync_timer.setSingleShot(True);self.sync_timer.setInterval(120);self.sync_timer.timeout.connect(self.sync)
         self.sync()
+    def request_sync(self,*_):
+        self.pause();self.sync_timer.start()
     def sync(self,*_):
+        self.sync_timer.stop()
         self.pause();w=self.window
         self.canvas.settings=dict(seconds=w.seconds.value(),zoom=w.zoom.value(),zoom_mode=w.zoom_mode.currentData(),travel_pc=w.travel_pc.value(),target_distance_pc=w.target_distance_pc.value())
         from motion import validate_motion
@@ -151,6 +155,8 @@ class IntegratedPreview(QWidget):
         self.canvas.position=value/10000;self.canvas.update();s=self.window.seconds.value();t=self.canvas.position*s
         self.counter.setText(f'{int(t)//60}:{int(t)%60:02d} / {s//60}:{s%60:02d}')
     def toggle(self):
+        if self.sync_timer.isActive():self.sync()
+        if not self.play.isEnabled():return
         if self.timer.isActive():self.pause();return
         if self.position.value()==10000:self.position.setValue(0)
         self.started=time.monotonic()-self.canvas.position*self.window.seconds.value();self.timer.start();self.play.setText('Pause')
@@ -193,7 +199,7 @@ class IntegratedPreview(QWidget):
         if self.closing:self.window.close()
         else:self.start_pending()
     def shutdown(self):
-        self.closing=True;self.pending=None;self.pause()
+        self.closing=True;self.pending=None;self.pause();self.sync_timer.stop()
         if self.loader is not None:self.loader.cancel.set();return False
         return True
 
@@ -241,8 +247,8 @@ class Workspace:
         for item in (w.progress_bar,w.render_counter,w.cancel_button):
             policy=item.sizePolicy();policy.setRetainSizeWhenHidden(True);item.setSizePolicy(policy);item.hide()
         w.settings=[w.header,self.nav,self.content];w.output.editingFinished.connect(w.refresh_project)
-        for control in (w.seconds,w.zoom,w.travel_pc,w.target_distance_pc):control.valueChanged.connect(self.preview.sync)
-        w.zoom_mode.currentIndexChanged.connect(self.preview.sync);w.star_limit.valueChanged.connect(self.refresh)
+        for control in (w.seconds,w.zoom,w.travel_pc,w.target_distance_pc):control.setKeyboardTracking(False);control.valueChanged.connect(self.preview.request_sync)
+        w.zoom_mode.currentIndexChanged.connect(self.preview.request_sync);w.star_limit.valueChanged.connect(self.refresh)
         for item in w.findChildren(QAbstractSpinBox):item.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.restore_tools();self.go(0)
     def create_controls(self):
@@ -372,6 +378,9 @@ class Workspace:
     def changed_calculation(self):
         w=self.w
         return (w.prepared_approximate is not None and w.prepared_approximate!=w.approximate_distances.isChecked()) or (w.prepared_star_limit is not None and w.star_limit.value()>w.prepared_star_limit)
+    def update_flight_summary(self):
+        w=self.w
+        self.export_summary.setText(f'{w.seconds.value()} seconds · {w.zoom.value():g}× zoom · {w.travel_pc.text()} travel')
     def refresh(self,*_):
         w=self.w
         if not hasattr(w,'start'):return
@@ -381,7 +390,7 @@ class Workspace:
         self.layers=all((folder/name).is_file() for name in ('photo.png','starless.png','source_wcs.fits'))
         self.folder.setEnabled(folder.is_dir())
         self.output_note.setText('Project folder: '+str(folder))
-        self.export_summary.setText(f'{w.seconds.value()} seconds · {w.zoom.value():g}× zoom · {w.travel_pc.text()} travel')
+        self.update_flight_summary()
         current=bool(w.siril or w.file_source or read_project(folder));unsolved=bool(not w.siril and w.file_source and not w.file_source.has_coordinates and not read_project(folder))
         allowed=[True,current,self.ready,self.ready]
         for i in range(4):

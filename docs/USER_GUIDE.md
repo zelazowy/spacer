@@ -112,6 +112,8 @@ After calculating stars, use **Preview flight**. No video rendering, catalogue q
 
 Background/star textures are downsampled to at most 1200 px and packed into one atlas by a cancellable background worker. Coordinates, distances and perspective remain based on the saved scene. There is no browser, web server or WebEngine dependency. The shared image canvas, playback bar and reserved status/action areas do not change size when controls expand or you switch image-related steps. Tool setup is deliberately image-free.
 
+Numeric flight fields apply when you press **Enter** or move focus away. Typing does not redraw the scene or refresh the project on each digit; preview changes are coalesced after a short pause. Distance text omits thousands separators to make large values easier to edit, while localized pasted numbers remain supported.
+
 Use **Play/Pause** or scrub the timeline. Set Motion, Final zoom, Travel distance and Duration. Target-distance mode uses **Choose target…**, or the **Target distance** field below the chooser; the target must exceed travel. Clicking a moving star shows its catalogue ID, distance/interval in light-years and provenance. Show star boundaries to inspect extracted patches. Controls update the next flight without modifying saved scenes; settings are saved when processing/exporting, not on every preview adjustment.
 
 Project switches cancel obsolete preview loads and discard stale results. Closing cancels loaders before destroying the window; animation stops when leaving Preview or processing begins.

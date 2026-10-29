@@ -560,7 +560,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(w.workflow.step,2);self.assertTrue(w.preview.isEnabled());self.assertFalse(w.video.isEnabled())
         self.assertIsNotNone(w.workflow.preview.canvas.data)
         with patch.object(w,'launch') as launch:
-            w.zoom.setValue(2);w.seconds.setValue(20)
+            w.zoom.setValue(2);w.seconds.setValue(20);w.workflow.preview.sync()
             self.assertEqual(w.workflow.preview.canvas.settings['zoom'],2)
             self.assertEqual(w.workflow.preview.canvas.settings['seconds'],20);launch.assert_not_called()
         self.assertEqual(path.read_bytes(),before);self.assertEqual(project.read_bytes(),original)
@@ -642,3 +642,18 @@ class LauncherTests(unittest.TestCase):
         try:
             self.assertEqual(other.engine.currentIndex(),1);self.assertEqual(other.executable.text(),'/bin/sh');self.assertEqual(other.ffmpeg.text(),'/bin/sh')
         finally:other.close()
+
+    def test_typing_distance_does_not_refresh_project_or_repaint_per_digit(self):
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtCore import Qt,QLocale
+        from ui_units import LY_PER_PC
+        w=self.window;w.workflow.go(2);w.zoom_mode.setCurrentIndex(1)
+        w.travel_pc.setLocale(QLocale('en_US'));w.travel_pc.setFocus();w.travel_pc.selectAll()
+        before=w.travel_pc.value()
+        with patch.object(w.workflow,'refresh') as refresh,patch.object(w.workflow.preview,'sync') as redraw:
+            QTest.keyClicks(w.travel_pc,'1500000')
+            self.assertEqual(w.travel_pc.value(),before);refresh.assert_not_called();redraw.assert_not_called()
+            QTest.keyClick(w.travel_pc,Qt.Key.Key_Return)
+            self.assertAlmostEqual(w.travel_pc.value()*LY_PER_PC,1500000,places=5)
+            refresh.assert_not_called();redraw.assert_not_called()
+        self.assertTrue(w.workflow.preview.sync_timer.isActive())

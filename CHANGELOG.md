@@ -2,6 +2,12 @@
 
 Release history for SPACER. Current setup and usage are in [README.md](README.md); repository working rules are in [AGENTS.md](AGENTS.md).
 
+## 1.0.2 — 2026-10-29
+
+- Keep numeric flight edits local until Enter or focus loss, avoiding validation/reformatting on every digit.
+- Remove project-state/file checks from flight-value changes and debounce preview updates by 120 ms. Coalesce rapid changes and flush pending settings before playback.
+- Accept partially typed localized grouped distances and avoid inserting thousands separators into editable distance text. Keep light-year input and parsec storage unchanged.
+
 ## 1.0.1 — 2026-10-29
 
 - Show Target distance directly below the target chooser in target-distance mode. Keep catalogue/manual distance provenance in a Distance source disclosure.

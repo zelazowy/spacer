@@ -149,8 +149,7 @@ class FlythroughWindow(QWidget):
         self.target_summary.setToolTip(self.target_origin.text())
         self.perspective_note.setText('Choose a catalogue target or enter a distance.' if not d else (
             ('Very little background zoom at this distance.' if d/(d-s)<1.005 else f'Final enlargement: {d/(d-s):.3g}×') if d>s else 'Reduce travel distance; it must be less than the target distance.'))
-        if hasattr(self,'start'):
-            if hasattr(self,'workflow'):self.workflow.refresh()
+        if hasattr(self,'workflow'):self.workflow.update_flight_summary()
 
     def reset_target_distance(self):
         self.target_distance_pc.setValue(0)
