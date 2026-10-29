@@ -76,3 +76,11 @@ Shared-library API/Skyshot schema tests and Siril/alignment adapter tests were r
 separately. M39 was processed through shared ASTAP and native registration with the
 same crop/residual measurements as before extraction. Skyshot lacks an installed
 runtime/index here: adapter simulation is not an accuracy or speed benchmark.
+
+## 1.0.0 workspace release — 2026-10-29
+
+- Full suite: **149 tests passed**. Added separate layer/calculation-stage checks, output-quality forwarding/provenance, light-year entry and locale conversion, shared-canvas geometry, stale preview cancellation and tool-preference coverage. Existing scientific/cache/solver tests pass.
+- Reopened the real B150 saved revision with **13,259 moving stars**. Inspected Qt captures for Prepare, Calculate, Preview, Export, image-free Tool setup, expanded motion controls and first/middle/last preview positions. Image bounds were identical across all image steps and expanded controls at a fixed window size. Capture artifacts remain outside the repository.
+- Encoded an actual B150 **4.000 s**, **30 fps**, **1920×1278** MP4 with **120 frames** in an isolated validation folder. Inspected decoded first/middle/final frames. Original saved photo, project and active scene SHA256 hashes were unchanged; no catalogue/extraction/engine work was needed for export. This validates the new export options on a real field, not improved separation accuracy.
+- Desktop screenshots/tests used Qt's offscreen platform. A Cocoa launch was attempted, but native visual inspection through Computer Use was unavailable because permissions were not granted. Native macOS appearance/file-dialog parity and a live Siril connection were not verified in this release check. Existing standalone/Siril boundary tests and synthetic external-engine workflow checks pass; no proprietary engine/model/license was reactivated or bundled.
+- Scientific algorithms, cache markers and stored parsec units are unchanged. Existing bright-star separation limits still apply.

@@ -19,6 +19,7 @@ from density import limit_scene_stars
 from flythrough import ease_progress
 from motion import motion_scales,validate_motion
 from version import VERSION,field_description
+from ui_units import DistanceSpinBox,LY_PER_PC
 
 
 @dataclass
@@ -84,7 +85,7 @@ class PreviewCanvas(QWidget):
     selected=pyqtSignal(str)
     def __init__(self,parent=None):
         super().__init__(parent);self.data=None;self.message='Loading lightweight preview…'
-        self.position=0.;self.settings={};self.bounds=False;self.setMinimumSize(200,140)
+        self.position=0.;self.settings={};self.photo=None;self.bounds=False;self.setMinimumSize(200,140)
     def set_data(self,data):
         self.data=data
         self.coords=np.array([[s[k] for k in ('x','y','depth','ax','ay','w','h')] for s in data.stars],dtype=float).reshape(-1,7)
@@ -105,6 +106,11 @@ class PreviewCanvas(QWidget):
         return z,sz,move,left,top,valid
     def paintEvent(self,event):
         painter=QPainter(self);painter.fillRect(self.rect(),QColor('#10141c'))
+        if not self.data and self.photo is not None:
+            rect=QRectF(self.rect());size=self.photo.size();size.scale(self.size(),Qt.AspectRatioMode.KeepAspectRatio)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            painter.drawImage(QRectF((self.width()-size.width())/2,(self.height()-size.height())/2,size.width(),size.height()),self.photo)
+            return
         if not self.data or self.message:
             painter.setPen(QColor('#d8e0ec'));painter.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,self.message);return
         z,sz,_,left,top,valid=self.geometry_at();rect=self.view_rect();scale=rect.width()/self.data.width
@@ -135,8 +141,8 @@ class PreviewCanvas(QWidget):
         if s.get('distance_source')=='Hipparcos-2' and s.get('distance_catalogue_id')!=s.get('source_id'):
             source+=' / '+s.get('distance_catalogue_id','HIP ID unavailable')
         value=s.get('distance_pc',s['depth'])
-        interval=f" · {s['lower_pc']:.1f}–{s['upper_pc']:.1f} pc" if 'lower_pc' in s and 'upper_pc' in s else ''
-        self.selected.emit(f"{source} · {value:.1f} pc{interval} · {s.get('distance_source','Gaia geometric')}"+
+        interval=f" · {s['lower_pc']*LY_PER_PC:.1f}–{s['upper_pc']*LY_PER_PC:.1f} ly" if 'lower_pc' in s and 'upper_pc' in s else ''
+        self.selected.emit(f"{source} · {value*LY_PER_PC:.1f} ly{interval} · {s.get('distance_source','Gaia geometric')}"+
             (' (approximate)' if s.get('distance_approximate') else '')+f" · original pixel {s['x']:.1f}, {s['y']:.1f}")
 
 
@@ -155,8 +161,8 @@ class PreviewWindow(QDialog):
         first=QHBoxLayout();second=QHBoxLayout();rows.addLayout(first);rows.addLayout(second);layout.addWidget(self.controls)
         self.mode=QComboBox();self.mode.addItem('Camera zoom','independent');self.mode.addItem('Travel toward a target','target_distance')
         self.zoom=self.spin(1,101,3,settings['zoom'],'×')
-        self.travel=self.spin(0,1e12,3,settings['travel_pc'],' pc')
-        self.distance=self.spin(0,1e12,3,settings['target_distance_pc'],' pc');self.distance.setSpecialValueText('Set target distance')
+        self.travel=DistanceSpinBox();self.travel.setValue(settings['travel_pc'])
+        self.distance=DistanceSpinBox();self.distance.setValue(settings['target_distance_pc']);self.distance.setSpecialValueText('Set target distance')
         self.seconds=QSpinBox();self.seconds.setRange(4,600);self.seconds.setValue(int(settings['seconds']));self.seconds.setSuffix(' s')
         for row,label,control in [(first,'Motion',self.mode),(first,'Final zoom',self.zoom),(first,'Duration',self.seconds),
                                   (second,'Travel',self.travel),(second,'Target distance',self.distance)]:

@@ -10,6 +10,7 @@ import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+import workspace_ui  # Load native dependencies before isolated sirilpy import checks.
 
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 try:
@@ -37,41 +38,35 @@ class LauncherTests(unittest.TestCase):
         self.window=self.launcher.FlythroughWindow(SimpleNamespace(get_image_filename=lambda:str(self.folder/'M45.fits')))
         self.window.show();self.app.processEvents()
 
+    def wait_preview(self,w):
+        import time
+        end=time.monotonic()+5
+        while w.workflow.preview.loader and time.monotonic()<end:
+            self.app.processEvents();time.sleep(.005)
+        self.app.processEvents();self.assertIsNone(w.workflow.preview.loader)
+
     def tearDown(self):
-        self.window.close();self.preference_patch.stop();self.temp.cleanup()
+        self.window.close();self.wait_preview(self.window);self.preference_patch.stop();self.temp.cleanup()
 
-    def test_disclosures_keep_setup_out_of_main_workflow(self):
-        w=self.window
-        self.assertFalse(w.advanced_dialog.isVisible());self.assertFalse(w.log.isVisible())
-        original_size=w.size()
-        w.advanced_toggle.setChecked(True);self.app.processEvents()
-        self.assertTrue(w.advanced_dialog.isVisible());self.assertEqual(w.size(),original_size)
-        w.advanced_dialog.close()
-        self.assertFalse(w.advanced_toggle.isChecked())
-        self.assertFalse(hasattr(w,'zoom_hint'))
-        w.zoom.setValue(10);self.assertEqual(w.zoom_percent(),900)
-        self.assertEqual(w.zoom.text(),'10×')
+    def test_setup_is_dedicated_and_preserves_window_size(self):
+        w=self.window;original=w.size()
+        w.workflow.go(4);self.app.processEvents()
+        self.assertFalse(w.workflow.preview.isVisible());self.assertEqual(w.size(),original)
+        self.assertTrue(w.executable.isVisible());self.assertFalse(w.epoch.isVisible())
+        w.workflow.go(0);self.app.processEvents();self.assertTrue(w.workflow.preview.isVisible())
+        w.zoom.setValue(10);self.assertEqual(w.zoom_percent(),900);self.assertEqual(w.zoom.text(),'10×')
 
-    def test_main_motion_controls_are_contextual_and_details_are_advanced(self):
-        w=self.window
-        self.assertTrue(w.zoom.isVisible())
-        self.assertFalse(w.target_row.isVisible())
-        self.assertFalse(w.travel_pc.isVisible())
-        self.assertFalse(w.target_distance_pc.isVisible())
-        self.assertFalse(w.target_origin.isVisible())
-        w.zoom_mode.setCurrentIndex(w.zoom_mode.findData('target_distance'));self.app.processEvents()
-        self.assertFalse(w.zoom.isVisible())
-        self.assertTrue(w.find_targets_button.isVisible())
-        self.assertTrue(w.perspective_note.isVisible())
-        self.assertFalse(w.travel_pc.isVisible())
-        w.target_distance_pc.setValue(400)
-        self.assertIn('400 pc',w.target_summary.text())
-        self.assertIn('1.25',w.perspective_note.text())
-        w.advanced_toggle.setChecked(True);self.app.processEvents()
-        self.assertTrue(w.travel_pc.isVisible());self.assertTrue(w.target_distance_pc.isVisible())
-        w.advanced_dialog.close()
-        w.zoom_mode.setCurrentIndex(0);self.app.processEvents()
+    def test_motion_controls_are_contextual_and_display_light_years(self):
+        w=self.window;w.workflow.go(2);self.app.processEvents()
         self.assertTrue(w.zoom.isVisible());self.assertFalse(w.target_row.isVisible())
+        self.assertTrue(w.travel_pc.isVisible());self.assertIn('ly',w.travel_pc.text())
+        w.zoom_mode.setCurrentIndex(1);self.app.processEvents()
+        self.assertFalse(w.zoom.isVisible());self.assertTrue(w.target_row.isVisible())
+        w.target_distance_pc.setValue(400)
+        self.assertIn('ly',w.target_summary.text());self.assertIn('1.25',w.perspective_note.text())
+        self.assertFalse(w.target_distance_pc.isVisible())
+        w.motion_settings_toggle.setChecked(True);self.app.processEvents()
+        self.assertTrue(w.target_distance_pc.isVisible());self.assertEqual(w.target_distance_pc.value(),400)
 
     def test_project_restore_and_switch_clear_previous_exports(self):
         w=self.window;saved=self.folder/'saved';saved.mkdir()
@@ -81,7 +76,7 @@ class LauncherTests(unittest.TestCase):
         w.use_prepared(saved)
         self.assertEqual(w.seconds.value(),25);self.assertEqual(w.zoom.value(),2.5)
         self.assertTrue(w.video.isEnabled());self.assertFalse(w.preparation.isEnabled())
-        self.assertEqual(w.start.text(),'Render flight')
+        self.assertEqual(w.start.text(),'Continue to export')
         w.output.setText(str(self.folder/'new'));w.refresh_project()
         self.assertFalse(w.video.isEnabled());self.assertFalse(w.preview.isEnabled())
         self.assertTrue(w.preparation.isEnabled());self.assertIsNone(w.result)
@@ -112,7 +107,7 @@ class LauncherTests(unittest.TestCase):
         saved=self.folder/'partial';saved.mkdir()
         (saved/'project.json').write_text(json.dumps(dict(stage='matching')))
         self.window.use_prepared(saved)
-        self.assertEqual(self.window.start.text(),'Resume and render')
+        self.assertEqual(self.window.start.text(),'Prepare image')
         self.assertFalse(self.window.preparation.isEnabled())
         self.assertFalse(self.window.preview.isEnabled())
 
@@ -129,7 +124,7 @@ class LauncherTests(unittest.TestCase):
         with patch.object(self.launcher.QMessageBox,'warning') as warning,patch.object(w,'launch') as launch:
             w.begin()
             launch.assert_not_called();warning.assert_called_once()
-        self.assertTrue(w.advanced_dialog.isVisible())
+        self.assertEqual(w.workflow.step,0)
         self.assertIn('observation date',w.status.text())
 
     def test_zoom_scale_preserves_existing_project_units(self):
@@ -458,29 +453,26 @@ class LauncherTests(unittest.TestCase):
                 button.click()
                 self.assertEqual(Path(picker.call_args.args[2]),expected.resolve())
 
-    def test_advanced_dialog_fits_contents_when_screen_has_space(self):
-        w=self.window
-        w.advanced_toggle.setChecked(True);self.app.processEvents()
-        self.assertLessEqual(w.advanced_dialog.height(),w.screen().availableGeometry().height()-64)
-        self.assertEqual(w.advanced_scroll.verticalScrollBar().maximum(),0)
+    def test_setup_paths_expand_and_small_windows_scroll(self):
+        w=self.window;w.resize(1100,760);w.workflow.go(4);self.app.processEvents()
+        before=w.executable.width();w.resize(1440,900);self.app.processEvents()
+        self.assertGreater(w.executable.width(),before)
+        w.resize(700,650);self.app.processEvents()
+        self.assertGreater(w.main_scroll.horizontalScrollBar().maximum(),0)
 
-    def test_advanced_sections_and_geometry_stay_visible_across_project_stages(self):
-        w=self.window
+    def test_canvas_geometry_is_independent_of_steps_and_advanced(self):
+        w=self.window;w.resize(1440,900);w.show();self.app.processEvents()
+        canvas=w.workflow.preview.canvas
         def geometry():
-            w.advanced_dialog.close();w.advanced_toggle.setChecked(True);self.app.processEvents()
-            return (w.advanced_dialog.size(),w.preparation.geometry(),w.star_limit.geometry(),
-                w.recalculation.geometry(),w.ffmpeg.geometry(),w.output.geometry())
+            self.app.processEvents();point=canvas.mapTo(w,canvas.rect().topLeft())
+            return point.x(),point.y(),canvas.width(),canvas.height()
         baseline=geometry()
-        for stage in ('solved','matching','refinement','ready'):
-            folder=self.folder/stage;folder.mkdir()
-            (folder/'project.json').write_text(json.dumps(dict(stage=stage,engine='StarNet',executable='/saved/tools/starnet2')))
-            if stage=='ready': (folder/'scene_iterative.json').write_text('{}')
-            w.use_prepared(folder)
-            self.assertFalse(w.preparation.isHidden());self.assertFalse(w.recalculation.isHidden())
-            self.assertEqual(w.preparation.isEnabled(),stage=='solved')
-            self.assertEqual(w.engine.currentIndex(),1);self.assertEqual(w.executable.text(),'/saved/tools/starnet2')
-            self.assertEqual(geometry(),baseline,stage)
-            if stage!='solved': self.assertIn('Completed star-removal output is reused',w.preparation_note.text())
+        for step in range(4):
+            w.workflow.go(step);self.assertEqual(geometry(),baseline)
+        w.workflow.go(2);w.zoom_mode.setCurrentIndex(1);w.motion_settings_toggle.setChecked(True)
+        self.assertEqual(geometry(),baseline)
+        w.workflow.go(4);self.app.processEvents();self.assertFalse(canvas.isVisible())
+        w.workflow.go(2);self.assertEqual(geometry(),baseline)
 
     def test_new_image_uses_default_limit_after_opening_limited_project(self):
         from PIL import Image
@@ -553,30 +545,22 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue(w.preview.isEnabled());self.assertTrue(w.video.isEnabled())
             self.assertEqual(w.result_stem,'previous');w.worker=None
 
-    def test_native_preview_works_before_export_and_applies_only_on_request(self):
+    def test_integrated_preview_works_before_export_and_tracks_controls(self):
         import numpy as np
         from flythrough import png_data
-        from PyQt6.QtCore import QEventLoop,QTimer
         saved=self.folder/'preview';saved.mkdir()
         scene=dict(width=60,height=40,stars=[],background=png_data(np.zeros((40,60,3))),prepared_with_version='0.17.0')
         active=saved/'calculations'/'v0.17.0_001';active.mkdir(parents=True)
         path=active/'scene_iterative.json';path.write_text(json.dumps(scene));before=path.read_bytes()
-        project=saved/'project.json';project.write_text(json.dumps(dict(stage='ready',seconds=12,zoom=30,calculation_path='calculations/v0.17.0_001')));original_project=project.read_bytes()
-        w=self.window;w.use_prepared(saved)
-        self.assertTrue(w.preview.isEnabled());self.assertFalse(w.video.isEnabled())
+        project=saved/'project.json';project.write_text(json.dumps(dict(stage='ready',seconds=12,zoom=30,calculation_path='calculations/v0.17.0_001')));original=project.read_bytes()
+        w=self.window;w.use_prepared(saved);self.wait_preview(w)
+        self.assertEqual(w.workflow.step,2);self.assertTrue(w.preview.isEnabled());self.assertFalse(w.video.isEnabled())
+        self.assertIsNotNone(w.workflow.preview.canvas.data)
         with patch.object(w,'launch') as launch:
-            w.preview.click();preview=w.preview_window
-            loop=QEventLoop();preview.loader.finished.connect(loop.quit);QTimer.singleShot(3000,loop.quit)
-            if preview.loader.isRunning():loop.exec()
-            self.app.processEvents();self.assertTrue(preview.finished_loading);launch.assert_not_called()
-            self.assertEqual(preview.scene_path,path.resolve())
-            self.assertIn('preview',preview.windowTitle());self.assertFalse(preview.export.isEnabled())
-            preview.zoom.setValue(2);preview.seconds.setValue(20)
-            self.assertEqual(w.zoom.value(),1.3);self.assertEqual(w.seconds.value(),12)
-            preview.apply.click()
-            self.assertEqual(w.zoom.value(),2);self.assertEqual(w.seconds.value(),20)
-            preview.close();self.app.processEvents()
-        self.assertEqual(path.read_bytes(),before);self.assertEqual(project.read_bytes(),original_project)
+            w.zoom.setValue(2);w.seconds.setValue(20)
+            self.assertEqual(w.workflow.preview.canvas.settings['zoom'],2)
+            self.assertEqual(w.workflow.preview.canvas.settings['seconds'],20);launch.assert_not_called()
+        self.assertEqual(path.read_bytes(),before);self.assertEqual(project.read_bytes(),original)
 
     def test_stale_or_busy_preview_cannot_apply_to_another_project(self):
         w=self.window;folder=Path(w.output.text()).resolve()
@@ -591,20 +575,16 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(w.seconds.value(),before)
         w.worker=None
 
-    def test_main_window_close_waits_for_preview_loader_cancellation(self):
-        from PyQt6.QtCore import QEventLoop,QTimer
+    def test_close_waits_for_integrated_loader_cancellation(self):
         saved=self.folder/'closing-preview';saved.mkdir()
-        (saved/'scene_iterative.json').write_text('{}')
-        (saved/'project.json').write_text(json.dumps(dict(stage='ready')))
-        w=self.window;w.use_prepared(saved);entered=threading.Event()
+        (saved/'scene_iterative.json').write_text('{}');(saved/'project.json').write_text(json.dumps(dict(stage='ready')))
+        w=self.window;entered=threading.Event()
         def until_cancel(path,limit,cancel):
             entered.set();cancel.wait(3);raise InterruptedError()
         with patch('preview.prepare_preview',side_effect=until_cancel):
-            w.open_preview();preview=w.preview_window;self.assertTrue(entered.wait(1))
-            loop=QEventLoop();preview.loader.finished.connect(loop.quit);QTimer.singleShot(4000,loop.quit)
-            w.close()
-            if preview.loader.isRunning():loop.exec()
-            self.app.processEvents();self.assertFalse(w.isVisible())
+            w.use_prepared(saved);self.assertTrue(entered.wait(1));loader=w.workflow.preview.loader
+            w.close();self.assertTrue(loader.cancel.is_set());self.wait_preview(w)
+            self.assertFalse(w.isVisible())
 
     def test_details_stays_on_screen_with_scroll_fallback(self):
         w=self.window
@@ -619,27 +599,43 @@ class LauncherTests(unittest.TestCase):
         (saved/'scene_iterative.json').write_text('{}')
         for name in ('photo.png','starless.png','source_wcs.fits','catalog.csv'): (saved/name).touch()
         w=self.window;w.use_prepared(saved)
-        self.assertFalse(w.start.isEnabled());self.assertTrue(w.recalculate_button.isEnabled())
+        self.assertFalse(w.workflow.ready);self.assertTrue(w.recalculate_button.isEnabled())
+        w.workflow.go(3);self.assertFalse(w.start.isEnabled())
         self.assertIn('calculations are missing',w.status.text())
 
-    def test_header_height_and_spacing_survive_resizing_and_state_changes(self):
-        from PIL import Image
-        w=self.window
-        def geometry():
-            return (w.header.y(),w.header.height(),(w.heading.y(),w.heading.height()),(w.subtitle.y(),w.subtitle.height()),w.project_group.y())
-        self.app.processEvents();before=geometry()
-        for width,height in ((680,1100),(900,1200),(600,800)):
-            w.resize(width,height);self.app.processEvents()
-            self.assertEqual(geometry(),before)
-        for opened in (True,False,True):
-            w.details_toggle.setChecked(opened);self.app.processEvents()
-            self.assertEqual(geometry(),before)
-        unsolved=self.folder/'plain.jpg';Image.new('RGB',(16,12)).save(unsolved)
-        standalone=self.launcher.FlythroughWindow();standalone.show();self.app.processEvents()
+    def test_header_and_footer_do_not_move_when_status_or_details_change(self):
+        w=self.window;w.resize(1440,900);self.app.processEvents()
+        before=(w.header.geometry(),w.start.geometry(),w.workflow.preview.canvas.geometry())
+        for message in ('Working…','Long wrapped status '*25,'One\nTwo'):
+            w.report_progress(message);w.details_toggle.setChecked(True);self.app.processEvents()
+            self.assertEqual((w.header.geometry(),w.start.geometry(),w.workflow.preview.canvas.geometry()),before)
+            w.details_toggle.setChecked(False)
+
+    def test_primary_steps_prepare_then_calculate_then_export_explicitly(self):
+        w=self.window;w.executable.setText('/bin/sh');w.ffmpeg.clear()
+        with patch.object(w,'begin') as begin:
+            w.workflow.go(0);w.workflow.primary();self.assertEqual(w.workflow.action,'layers');begin.assert_called_once()
+        w.workflow.layers=True;w.workflow.primary();self.assertEqual(w.workflow.step,1)
+        with patch.object(w,'begin') as begin:
+            w.workflow.primary();self.assertEqual(w.workflow.action,'calculate');begin.assert_called_once()
+
+    def test_latest_project_wins_when_a_preview_load_is_cancelled(self):
+        import numpy as np
+        from flythrough import png_data
+        from PyQt6.QtCore import QTimer
+        folders=[]
+        for i in (1,2):
+            folder=self.folder/f'project-{i}';folder.mkdir();folders.append(folder)
+            scene=dict(width=60*i,height=40,stars=[],background=png_data(np.zeros((40,60*i,3))))
+            (folder/'scene_iterative.json').write_text(json.dumps(scene));(folder/'project.json').write_text(json.dumps(dict(stage='ready')))
+        w=self.window;w.use_prepared(folders[0]);w.use_prepared(folders[1]);self.wait_preview(w)
+        self.assertEqual(w.workflow.preview.canvas.data.width,120)
+        self.assertEqual(w.prepared,folders[1].resolve())
+
+    def test_tool_setup_persists_paths_and_engine_checks_are_honest(self):
+        w=self.window;w.workflow.go(4);w.engine.setCurrentIndex(1);w.executable.setText('/bin/sh');w.ffmpeg.setText('/bin/sh')
+        w.workflow.check_tool(0);self.assertIn('model and license',w.workflow.check_results[0].text())
+        w.workflow.save_tools();other=self.launcher.FlythroughWindow()
         try:
-            reference=(standalone.header.y(),standalone.header.height(),(standalone.heading.y(),standalone.heading.height()),(standalone.subtitle.y(),standalone.subtitle.height()),standalone.project_group.y())
-            standalone.use_image(unsolved);self.app.processEvents()
-            self.assertEqual((standalone.header.y(),standalone.header.height(),(standalone.heading.y(),standalone.heading.height()),(standalone.subtitle.y(),standalone.subtitle.height()),standalone.project_group.y()),reference)
-            standalone.resize(800,1200);self.app.processEvents()
-            self.assertEqual((standalone.header.y(),standalone.header.height(),(standalone.heading.y(),standalone.heading.height()),(standalone.subtitle.y(),standalone.subtitle.height()),standalone.project_group.y()),reference)
-        finally: standalone.close()
+            self.assertEqual(other.engine.currentIndex(),1);self.assertEqual(other.executable.text(),'/bin/sh');self.assertEqual(other.ffmpeg.text(),'/bin/sh')
+        finally:other.close()

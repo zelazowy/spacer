@@ -170,6 +170,7 @@ def resume_project(out, options, progress=lambda message:None, cancel=None):
     """Resume the saved snapshot; never consult the currently open Siril image."""
     out=Path(out)
     active=calculation_folder(out)
+    if getattr(options,'layers_only',False) and (active/'scene_iterative.json').is_file():return out
     if (active/'scene.json').exists() or (active/'scene_iterative.json').exists() or (out/'preview.html').exists():
         return render_prepared(out,options,progress,cancel)
     state=read_project(out)
@@ -254,6 +255,9 @@ def run_pipeline(pixels,header,options,progress=lambda message:None,cancel=None)
     progress('Saving photo and starless JPEGs (lossless PNGs used internally)…')
     export_layers(photo,starless,out)
     save_project(out,starless_complete=True,stage='matching')
+    if getattr(options,'layers_only',False):
+        progress('Image layers ready. Calculate stars to continue.')
+        return out
     if not (options.epoch or header.get('DATE-OBS')):
         raise ValueError('Observation date is missing. Enter its date in the script window and retry.')
     args=argparse.Namespace(photo=out/'photo.png',starless=out/'starless.png',wcs=out/'source_wcs.fits',
@@ -288,7 +292,7 @@ def load_prepared_scene(out):
 def check_distance_coverage(scene,options):
     prepared=scene.get('distance_coverage',{}).get('enabled',False)
     if bool(getattr(options,'approximate_distances',prepared))!=prepared:
-        raise ValueError('Distance coverage changed. Use Advanced settings → Recalculate stars before rendering.')
+        raise ValueError('Distance coverage changed. Use Calculate stars → Recalculate stars before rendering.')
 
 
 def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=None,background=None):
@@ -299,7 +303,7 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     zoom_mode=getattr(options,'zoom_mode','independent')
     travel=float(getattr(options,'travel_pc',80))
     target_distance=float(getattr(options,'target_distance_pc',400))
-    validate_motion(zoom_mode,travel,target_distance)
+    if not getattr(options,'prepare_only',False):validate_motion(zoom_mode,travel,target_distance)
     motion_settings=dict(zoom_mode=zoom_mode,travel_pc=travel,target_distance_pc=target_distance,target_info=getattr(options,'target_info',None))
     max_stars=moving_star_limit(getattr(options,'max_stars',read_project(out).get('max_stars',DEFAULT_MAX_STARS)))
     active=calculation_folder(out)
@@ -331,21 +335,30 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
     if limited_background is not None: background=limited_background
     if scene.get('extraction_version',0)<4:
         progress('This cached field uses older extraction. Create a new flight to apply compact-core fitting; rendering alone does not repair old patches.')
+    if getattr(options,'prepare_only',False):
+        save_project(out,stage='ready')
+        progress('Star calculations ready. Preview your flight before exporting.')
+        return out
+    fps=int(getattr(options,'fps',24))
+    video_width=int(getattr(options,'video_width',1920))
+    if fps not in (24,30,60) or video_width not in (0,1920,2560,3840):
+        raise ValueError('Choose a supported frame rate and output resolution.')
     if options.seconds<=3 or not 0<=options.zoom<=10000:
         raise ValueError('Duration must exceed 3 seconds and zoom must be between 0 and 10000%.')
     def token(value): return format(float(value),'g').replace('.','p')
-    base=f"flythrough_v{VERSION}_{mode}_{token(options.seconds)}s_zoom{token(options.zoom)}pct_24fps"
+    base=f"flythrough_v{VERSION}_{mode}_{token(options.seconds)}s_zoom{token(options.zoom)}pct_{fps}fps"
     if zoom_mode=='target_distance':
-        base=f"flythrough_v{VERSION}_{mode}_{token(options.seconds)}s_target{token(target_distance)}pc_travel{token(travel)}pc_24fps"
+        base=f"flythrough_v{VERSION}_{mode}_{token(options.seconds)}s_target{token(target_distance)}pc_travel{token(travel)}pc_{fps}fps"
     elif travel!=80:
         base+=f'_travel{token(travel)}pc'
+    base+=('_original' if video_width==0 else f'_{video_width}px')
     stem=base;index=2
     while any((out/(stem+ext)).exists() for ext in ('.mp4','.html','.json')):
         stem=f'{base}_{index:02d}';index+=1
     options.result_stem=stem
     scene=dict(scene,**motion_settings,render_version=VERSION,render_created_at=created_stamp(),render_name=stem)
     args=argparse.Namespace(seconds=options.seconds,zoom=1+options.zoom/100,travel=travel,zoom_mode=zoom_mode,target_distance_pc=target_distance,
-        fps=24,video_width=1920,ease_seconds=1.5,cancel_event=cancel,progress=progress,ffmpeg=options.ffmpeg,
+        fps=fps,video_width=video_width or scene['width'],ease_seconds=1.5,cancel_event=cancel,progress=progress,ffmpeg=options.ffmpeg,
         frame_progress=getattr(options,'frame_progress',None))
     progress(f'Reusing prepared field: {len(scene["stars"])} stars. Creating {stem}.mp4')
     template=Path(__file__).with_name('viewer.html').read_text()
@@ -355,12 +368,12 @@ def render_prepared(out,options,progress=lambda message:None,cancel=None,scene=N
         field_version=scene.get('prepared_with_version','unversioned'),field_created_at=scene.get('prepared_at'),date_info=scene.get('date_info'),
         extraction_version=scene.get('extraction_version'),iterative_revision=scene.get('iterative_revision'),
         calculation_path=read_project(out).get('calculation_path'),
-        duration_seconds=args.seconds,fps=24,max_stars=max_stars,motion_selection=scene.get('motion_selection'),iterative_limits=scene.get('iterative_limits'),
+        duration_seconds=args.seconds,fps=fps,video_width=video_width,max_stars=max_stars,motion_selection=scene.get('motion_selection'),iterative_limits=scene.get('iterative_limits'),
         distance_coverage=scene.get('distance_coverage'),
         final_zoom=(target_distance/(target_distance-travel) if zoom_mode=='target_distance' else args.zoom),
         zoom_mode=zoom_mode,target_info=motion_settings['target_info'],target_distance_pc=target_distance,travel_pc=travel,easing_seconds=1.5,mode=mode,matched_stars=len(scene['stars'])),indent=2))
     render_video(scene,background,args,out/(stem+'.mp4'))
     save_project(out,stage='ready',seconds=options.seconds,zoom=options.zoom,
-        ffmpeg=options.ffmpeg,last_render=stem)
+        ffmpeg=options.ffmpeg,last_render=stem,fps=fps,video_width=video_width)
     progress('Complete.')
     return out

@@ -82,7 +82,7 @@ class PreviewTests(unittest.TestCase):
         w.position.sliderPressed.emit();self.assertFalse(w.timer.isActive())
         rect=w.canvas.view_rect();scale=rect.width()/180
         QTest.mouseClick(w.canvas,Qt.MouseButton.LeftButton,pos=QPoint(round(rect.left()+80*scale),round(rect.top()+30*scale)))
-        self.assertIn('Gaia 1',w.selection.text());self.assertIn('1000.0 pc',w.selection.text())
+        self.assertIn('Gaia 1',w.selection.text());self.assertIn('3261.6 ly',w.selection.text())
         w.play.click();w.close();self.assertFalse(w.timer.isActive())
     def test_close_during_load_cancels_before_window_destruction(self):
         entered=threading.Event()

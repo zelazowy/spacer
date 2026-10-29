@@ -14,7 +14,9 @@ def main():
     siril=s.SirilInterface()
     try:
         siril.connect()
-        window=FlythroughWindow(siril);window.show();app.exec()
+        window=FlythroughWindow(siril)
+        if not window.prepared and not window.preferences.data.get('tools'):window.workflow.go(4)
+        window.show();app.exec()
     except Exception as exc:
         traceback.print_exc();QMessageBox.critical(None,'SPACER',str(exc))
     finally:

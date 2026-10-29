@@ -2,6 +2,16 @@
 
 Release history for SPACER. Current setup and usage are in [README.md](README.md); repository working rules are in [AGENTS.md](AGENTS.md).
 
+## 1.0.0 — 2026-10-29
+
+- Replace the compact script interface with the approved dark-only, large resizable workspace in standalone and Siril launchers.
+- Add revisitable Prepare image, Calculate stars, Preview flight and Export steps. Separate layer preparation and star calculation from video export; prepared projects reopen at Preview.
+- Integrate the lightweight asynchronous preview with the main flight controls. Keep its image/playback area stable across image steps and expanded settings; use independent scrolling panels and reserved progress/actions.
+- Give Tool setup a dedicated image-free layout, persistent engine/solver/encoder paths and clearly scoped installation checks. Keep advanced options contextual and diagnostics in Details.
+- Present travel, target and inspected stellar distances in light-years while preserving parsec-valued scientific calculations, saved projects and provenance.
+- Add 24/30/60 fps and 1920/2560/3840 px width or original-size export, preserving aspect ratio, original sampling, no upscaling and nonoverwriting parameterized filenames.
+- Retain existing caches, revision history, extraction algorithms and short easing. No scientific accuracy or extraction-stability milestone is implied by this major interface/workflow release.
+
 ## 0.19.0 — 2026-10-27
 
 - Add a separate native lightweight preview window to both launchers, available from saved calculations before rendering a video.

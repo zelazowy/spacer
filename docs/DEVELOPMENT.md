@@ -18,7 +18,7 @@ A unified headless CLI, packaged installers and website remain future work. `fly
 | --- | --- |
 | `../SPACER.py` | Standalone entry point and launch arguments |
 | `../Siril_Gaia_Flythrough.py` | Thin Siril adapter; snapshots current image/header |
-| `app.py` | Shared Qt controls, worker, projects, target picker and diagnostics |
+| `app.py` | Shared worker, image/project boundaries, target picker and diagnostics |
 | `image_source.py` | Disk inputs, embedded Astro-TIFF/JPEG metadata, raster orientation |
 | `siril_pipeline.py` | Working layers, external engines, project state, calculation revisions and exports |
 | `flythrough.py` | Matching, conservative compact-core extraction, subpixel renderer, prototype CLI |
@@ -32,6 +32,8 @@ A unified headless CLI, packaged installers and website remain future work. `fly
 | `preferences.py` | Local atomic navigation settings |
 | `task_progress.py` | Structured per-stage counts and diagnostic events |
 | `astap_solver.py` | Thin shared-solver adapter: snapshots, dates, project commits and provenance |
+| `workspace_ui.py` | Dark step workspace, persistent tool setup, integrated preview, stage actions and output quality |
+| `ui_units.py` | Light-year text/input conversion with parsec-valued controls and scale presentation |
 | `preview.py` | Read-only asynchronous downsampling/texture atlas, native Qt preview and temporary motion controls |
 | `viewer.html` | Self-contained interactive scene/inspection template |
 | `version.py` | Shared public version and UTC provenance timestamps |
@@ -101,7 +103,7 @@ Keep lookup off the GUI thread; discard stale-field responses. Closing must wait
 
 `motion.py` computes background and stellar scales separately. In target-distance mode, background uses `D/(D-s)` and extra stellar zoom is 1; stars already use their own `z/(z-s)` perspective. Never multiply target/background enlargement into stellar perspective again. Independent camera zoom retains its extra enlargement. Travel must be nonnegative and smaller than the target distance in target mode.
 
-The UI presents a zoom scale **1×–101×**; project/pipeline `zoom` remains **percent increase 0–10000%**. Convert at the UI boundary only. The prototype CLI's scale range is separately limited to 1–1.5. Defaults: 60 s, 1.3×, 24 fps, 80 pc and 1.5 s end ramps.
+The UI presents a zoom scale **1×–101×**; project/pipeline `zoom` remains **percent increase 0–10000%**. Convert at the UI boundary only. The prototype CLI's scale range is separately limited to 1–1.5. Defaults: 60 s, 1.3×, 24 fps, 80 pc (displayed as about 261 ly) and 1.5 s end ramps. `DistanceSpinBox.value()/setValue()` remain pc; text/editing/stepping use ly. Never convert stored `*_pc` fields a second time.
 
 ## Image metadata and matching epoch
 
@@ -135,7 +137,7 @@ Retain per-attempt stdout/stderr logs in ignored `.spacer-logs/` or a temporary 
 
 ## Qt, progress and navigation
 
-`refresh_motion_ui` owns contextual visibility and target summaries; call it after restoring state or assigning catalogue provenance. Use `setRowVisible` so labels follow controls. Prepared/current-image transitions must preserve stable Advanced geometry; solved-but-unprepared projects still allow first-preparation choices. See [AGENTS.md](../AGENTS.md#interface) for layout rules and the [historical audit](INTERFACE_AUDIT.md) for regression background.
+`refresh_motion_ui` owns contextual visibility and target summaries; call it after restoring state or assigning catalogue provenance. Use `setRowVisible` so labels follow controls. Prepared/current-image transitions must preserve the stable image/control-panel geometry; solved-but-unprepared projects still allow first-preparation choices. See [AGENTS.md](../AGENTS.md#interface) for layout rules and the [historical audit](INTERFACE_AUDIT.md) for regression background.
 
 Use `StageProgress` structured `(label, done, total, elapsed)` events, throttled to about four updates per second with exact completion. Negative totals mean unknown work; zero is a known empty stage. Count skipped/deferred entries after they return, but not failed/cancelled ones. Stage percentages/ETA are not overall-job progress. Remote TAP waits/downloads switch to activity mode; force counted updates when a region is saved even if it completed inside the throttle interval. Per-group IDs are diagnostics, never stage labels.
 
@@ -151,3 +153,13 @@ Standalone explicit launch inputs override remembered navigation. Missing/corrup
 Preview controls are local. `Use these settings` explicitly copies scales/parsecs/integer duration to the main window; preserve the main zoom-scale vs project-percent boundary. Reject apply from another project or while a processing worker is running. Keep legacy/full-resolution exported HTML accessible. Do not overwrite scenes/project files or run preparation/FFmpeg/catalogue queries to preview a saved field. Preview availability is independent of video existence.
 
 Cancellation/close must stop playback, wait for loader completion before destruction, and safely release the window reference. The main window also cancels/waits for loading previews when closing. Test those lifecycle paths as well as projection/camera crossing, settings application, cap restoration, inspection and invalid target distances. Keep actual export extraction, renderer and cache schemas unchanged.
+
+## Desktop workspace (1.0.0)
+
+The approved interface is dark only. `Workspace` constructs the shared named controls used by `app.py`; the Siril and disk launchers use the same window. Tool setup replaces the central image area with categorized configuration; Prepare/Calculate/Preview/Export share one persistent canvas, fixed-width scrolling control stack and reserved footer. No option/step handler resizes the top-level window. A workspace scroll fallback handles small screens. Native widgets retain keyboard operation; file dialogs follow the OS.
+
+`layers_only` stops `run_pipeline` after verified image/starless export, leaving stage `matching`. `prepare_only` runs catalogue/core/Iterative preparation and returns stage `ready` without HTML/MP4 generation or FFmpeg validation. Existing callers without these flags retain combined behavior. Explicit recalculation remains revisioned. Rendering a ready field does not recalculate.
+
+`IntegratedPreview` serializes scene/photo loads: cancel an obsolete loader, wait for its finished signal, then start the latest pending request. Bound Qt receiver slots reject obsolete keys. Closing waits for loader completion. Loading/preview edits never write projects. `PhotoLoader` provides a downsampled initial image; current unsaved Siril pixels are shown after layer preparation.
+
+Export options are `fps` (24/30/60) and `video_width` (1920/2560/3840 or 0 for source width); defaults remain 24 and 1920. Save them in project/export provenance and encode them in nonoverwriting filenames. The renderer still samples the original background for deep zoom, does not upscale and pads odd output dimensions for H.264. Easing stays 1.5 seconds. No extraction/cache-schema change accompanies this major workflow release.

@@ -26,6 +26,7 @@ def main():
         else: window.restore_last()
     except Exception as exc:
         QMessageBox.warning(window,'Cannot open input',str(exc))
+    if not window.prepared and not window.preferences.data.get('tools'):window.workflow.go(4)
     window.show()
     return application.exec()
 
